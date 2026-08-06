@@ -297,7 +297,7 @@ def update_results_table(mw):
         )
         cover_block = QVBoxLayout()
         cover_block.setSpacing(0)  # 「裁剪封面」紧贴展开/收起按钮上方
-        cover_block.setContentsMargins(0, 8, 0, 0)  # 缩略图与卡片顶部留间距（不顶头）
+        cover_block.setContentsMargins(0, 8, 12, 0)  # 缩略图与卡片顶部留间距（不顶头），右边距 12px 分隔右侧信息列
         cover_block.addWidget(
             _cover_with_badge(
                 first_info,
