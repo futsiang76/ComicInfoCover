@@ -58,7 +58,7 @@ class XMLTemplateHandler:
         else:
             # 已完结填写总卷数，连载中留空
             # 检查是否为已完结状态（complete标志为True或vol_info包含"全"）
-            is_completed = folder_info["complete"] or ("全" in folder_info.get("vol_info", ""))
+            is_completed = folder_info["complete"] or ("全" in (folder_info.get("vol_info") or ""))
             volume_value = str(folder_info["total_volumes"]) if is_completed else ""
             template.update({
                 "Count": volume_value,  # 系列总卷数
