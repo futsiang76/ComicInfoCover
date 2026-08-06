@@ -6,7 +6,7 @@
 
 from pathlib import Path
 
-from PyQt6.QtCore import QSettings, QSize, Qt
+from PyQt6.QtCore import QSettings, QSize
 from PyQt6.QtGui import QFont, QMovie
 from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QGroupBox,
                              QHBoxLayout, QLabel, QLineEdit, QProgressBar,
@@ -14,6 +14,8 @@ from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QGroupBox,
                              QWidget)
 
 from config import AUTO_TURBO_MATCH, MODE_SKIP_XMLEXIST
+
+from .utils import SmoothMovieLabel
 
 
 MODE_CONSTRAINED_SOURCES = ("manhuagui", "ComicVine")
@@ -29,6 +31,9 @@ MODE_DESCRIPTIONS = {
 def _on_source_changed(mw, text: str) -> None:
     """数据源下拉框变化：记录选中源并联动模式控件显隐"""
     mw.selected_source = text
+    if text not in MODE_CONSTRAINED_SOURCES:
+        # 切回 Bangumi：仅使用本地信息重置为未勾选（受限源下隐藏，不保留勾选状态）
+        mw.local_only_check.setChecked(False)
     apply_source_mode_constraint(mw, text)
 
 
@@ -342,12 +347,8 @@ def build_scan_tab(mw, tab_widget):
     cat_size = mw.loading_cat_movie.frameRect().size()
     if cat_size.isEmpty():  # 兜底：GIF 异常时退回原始像素，避免 0x0 不可见
         cat_size = QSize(282, 282)
-    mw.loading_cat_label = QLabel(mw)
+    mw.loading_cat_label = SmoothMovieLabel(mw.loading_cat_movie, mw)
     mw.loading_cat_label.setFixedSize(cat_size)
-    mw.loading_cat_label.setScaledContents(True)
-    mw.loading_cat_label.setAttribute(
-        Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-    mw.loading_cat_label.setMovie(mw.loading_cat_movie)
     mw.loading_cat_label.hide()
 
     scan_group.setLayout(scan_layout)

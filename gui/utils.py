@@ -4,9 +4,48 @@
 共享工具函数
 """
 
-from PyQt6.QtCore import QPoint
+from PyQt6.QtCore import QPoint, QSize, Qt
 from PyQt6.QtGui import QMovie
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QLabel
+
+
+class SmoothMovieLabel(QLabel):
+    """平滑缩放动画帧的 QLabel：QMovie 帧 → QPixmap.scaled(SmoothTransformation) → setPixmap
+
+    Qt 6 在 Windows 高 DPI 下整个 GUI 物理放大；QLabel 直接 setMovie 时 Qt 用
+    FastTransformation 重采样导致锯齿。改为每帧按 label 当前物理尺寸（含 DPR）
+    手动 SmoothTransformation 缩放后 setPixmap，消除放大锯齿。
+    """
+
+    def __init__(self, movie: QMovie, parent=None):
+        super().__init__(parent)
+        self._movie = movie
+        self._movie.setParent(self)  # 生命周期挂 label 防 GC
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setScaledContents(False)  # 缩放交给 _on_frame 平滑处理
+        movie.frameChanged.connect(self._on_frame)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+    def _on_frame(self, frame: int) -> None:
+        pix = self._movie.currentPixmap()
+        if pix.isNull():
+            return
+        target = self.size()  # label 逻辑尺寸；物理尺寸由 DPR 缩放
+        if target.isValid() and not target.isEmpty():
+            dpr = self.devicePixelRatioF()
+            physical = QSize(round(target.width() * dpr), round(target.height() * dpr))
+            pix = pix.scaled(physical, Qt.AspectRatioMode.KeepAspectRatio,
+                             Qt.TransformationMode.SmoothTransformation)
+            pix.setDevicePixelRatio(dpr)
+        self.setPixmap(pix)
+
+    def start(self) -> None:
+        self._movie.start()
+        # 启动时立即按当前 label 尺寸平滑渲染当前帧，不等待定时器首帧
+        self._on_frame(self._movie.currentFrameNumber())
+
+    def stop(self) -> None:
+        self._movie.stop()
 
 
 def _trim_compare_dicts(old_dict: dict, new_dict: dict) -> bool:
@@ -33,8 +72,7 @@ def start_loading_cat(mw) -> None:
     processEvents 泵一次确保首帧立即上屏，无需复杂 pump。
     """
     label = getattr(mw, "loading_cat_label", None)
-    movie = getattr(mw, "loading_cat_movie", None)
-    if label is None or movie is None:
+    if label is None:
         return
     # 挂主窗口：左下角对齐下方进度条左下角，悬浮于所有内容之上
     progress = getattr(mw, "progress_bar", None)
@@ -44,16 +82,14 @@ def start_loading_cat(mw) -> None:
         label.move(progress_pos.x(), progress_pos.y() + progress.height() - label.height())
     label.show()
     label.raise_()  # 浮到主窗口内容之上不被遮挡
-    if movie.state() != QMovie.MovieState.Running:
-        movie.start()
+    label.start()
     QApplication.processEvents()
 
 
 def stop_loading_cat(mw) -> None:
     """停止工作小猫加载动画（幂等）：停帧 + 隐藏"""
-    movie = getattr(mw, "loading_cat_movie", None)
     label = getattr(mw, "loading_cat_label", None)
-    if movie is not None and movie.state() == QMovie.MovieState.Running:
-        movie.stop()
-    if label is not None:
-        label.hide()
+    if label is None:
+        return
+    label.stop()
+    label.hide()
