@@ -189,6 +189,7 @@ def build_scan_tab(mw, tab_widget):
     mw.source_combo = QComboBox()
     # 配色对齐「漫画根目录」路径输入框（绿色主题）
     mw.source_combo.setStyleSheet("border: 2px solid #4CAF50; padding: 4px; font-size: 13px; background-color: #f0fff0;")
+    mw.source_combo.setMinimumWidth(140)
     mw.source_combo.addItems(["Bangumi（默认）", "manhuagui", "ComicVine"])
     mw.source_combo.setCurrentIndex(0)
     mw.selected_source = "Bangumi（默认）"
