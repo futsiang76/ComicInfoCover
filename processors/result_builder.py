@@ -29,8 +29,9 @@ def _merge_folder_tags(existing_tags: str, folder_name: str) -> str:
     × 分隔的多作者标签：若拆开后任一部分已存在于 Tags 则跳过
     （避免 [宇佐崎白×西修] 与已有的 西修/宇佐崎しろ 重复）
     """
-    from parsers.file_parser import parse_folder_tags_from_name
-    folder_tags = parse_folder_tags_from_name(folder_name)
+    from parsers.folder_parser import parse_folder_name_lenient
+    parsed = parse_folder_name_lenient(folder_name)
+    folder_tags = parsed.get("tags", []) if parsed else []
     if not folder_tags:
         return existing_tags
     existing = [t.strip() for t in existing_tags.split(',') if t.strip()] if existing_tags else []
