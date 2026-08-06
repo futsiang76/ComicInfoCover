@@ -5,7 +5,22 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 from processors.xml_generator import XMLGenerator
+from .cover_utils import get_zip_cover_info
 from .utils import check_all_files_have_xml
+
+
+def _collect_covers(folder_path: str, comic_files: List) -> Dict:
+    """为每个漫画文件提取封面信息 {filename: {path, width, height, ratio_ok}}
+
+    仅处理 zip/cbz（cbr/rar 走 7z 工具链，P2 暂不解析封面）。
+    """
+    covers = {}
+    for f, _ in comic_files:
+        if f.lower().endswith(('.zip', '.cbz')):
+            info = get_zip_cover_info(os.path.join(folder_path, f))
+            if info:
+                covers[f] = info
+    return covers
 
 
 def _merge_folder_tags(existing_tags: str, folder_name: str) -> str:
@@ -54,6 +69,7 @@ def create_result_dict(folder_path: str, folder_info: Dict,
     file_titles = {}
     file_details = {}
     locked_files = set()
+    covers = {}
     try:
         from parsers.file_parser import (generate_smart_title,
                                          parse_volume_from_filename)
@@ -75,6 +91,8 @@ def create_result_dict(folder_path: str, folder_info: Dict,
                 "month": comic_info_base.get("Month", "") if comic_info_base else "",
                 "summary": comic_info_base.get("Summary", "") if comic_info_base else ""
             }
+        # 提取每卷封面信息（尺寸 + 比例异常标记），供 P2 结果页展示
+        covers = _collect_covers(folder_path, comic_files)
         # 恢复锁定状态：先查 SQLite 缓存
         from models.database import LockDatabase
         from processors.zip_handler import read_xml_from_zip
@@ -100,6 +118,7 @@ def create_result_dict(folder_path: str, folder_info: Dict,
         "series": comic_info_base.get("Series", "") if comic_info_base else folder_info.get("series", ""),
         "file_titles": file_titles,
         "file_details": file_details,
+        "covers": covers,
         "locked_files": locked_files,
         "count": comic_info_base.get("Count", "") if comic_info_base else "",
         "writer": comic_info_base.get("Writer", "") if comic_info_base else folder_info.get("author", ""),
@@ -164,6 +183,7 @@ def create_result_dict_from_xml(folder_path: str, folder_info: Dict,
     file_titles = {}
     file_details = {}
     locked_files = set()
+    covers = {}
     try:
         from parsers.file_parser import generate_smart_title, parse_volume_from_filename
         from processors.zip_handler import read_xml_from_zip
@@ -178,6 +198,8 @@ def create_result_dict_from_xml(folder_path: str, folder_info: Dict,
                 continue
             comic_files.append((f, os.path.getsize(file_path)))
 
+        # 提取每卷封面信息（尺寸 + 比例异常标记），供 P2 结果页展示
+        covers = _collect_covers(folder_path, comic_files)
         # 先查 SQLite 缓存恢复锁定状态
         db = LockDatabase()
         db_states = db.batch_get_lock_states(comic_files)
@@ -225,6 +247,7 @@ def create_result_dict_from_xml(folder_path: str, folder_info: Dict,
         "series": comic_info_base.get("Series", "") if comic_info_base else folder_info.get("series", ""),
         "file_titles": file_titles,
         "file_details": file_details,
+        "covers": covers,
         "locked_files": locked_files,
         "count": comic_info_base.get("Count", "") if comic_info_base else "",
         "writer": comic_info_base.get("Writer", "") if comic_info_base else folder_info.get("author", ""),
