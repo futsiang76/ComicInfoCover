@@ -12,40 +12,9 @@
 线程化/信号/弹窗桥接/逐系列保存全部由 BaseScanThread 提供。
 """
 
-import os
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional
 
-from .base_scan_thread import RESULT_READY, BaseScanThread
-
-
-class _FullMatchContext:
-    """供 XmlModeHandler 使用的最小处理器上下文
-
-    复用 xml_mode_handler 的「已有 XML 分流」逻辑（模式 0：有 XML 时弹窗询问
-    处理方式），避免在 scan_controller 中重复实现。
-    """
-
-    mode_skip_xml = 0
-    auto_turbo = False
-
-    def __init__(self, gui_callback: Callable, manga_value: Optional[str]):
-        self.gui_callback = gui_callback
-        self.manga_value = manga_value
-        self.skipped = 0
-        self.auto_processed = 0
-        self._cancelled = False
-
-    def _create_result_dict(self, folder_path: str, folder_info: Dict,
-                            comic_info_base, selected_result, skipped: bool,
-                            process_status: str) -> Dict:
-        from processors.result_builder import create_result_dict
-        return create_result_dict(folder_path, folder_info, comic_info_base,
-                                  selected_result, skipped, process_status)
-
-    def _create_result_dict_from_xml(self, folder_path: str, folder_info: Dict,
-                                     xml_result: Dict) -> Dict:
-        from processors.result_builder import create_result_dict_from_xml
-        return create_result_dict_from_xml(folder_path, folder_info, xml_result)
+from .base_scan_thread import BaseScanThread
 
 
 class FullMatchThread(BaseScanThread):
@@ -61,8 +30,6 @@ class FullMatchThread(BaseScanThread):
 
     def __init__(self, manga_root: str, manga_value: Optional[str], parent=None):
         super().__init__(manga_root, manga_value, parent=parent)
-        self._xml_handler = None
-        self._xml_ctx = None
         self._fetcher = None
 
     def search_and_select(self, folder_path: str, folder_info: Dict):
@@ -73,30 +40,15 @@ class FullMatchThread(BaseScanThread):
         """
         from models.bangumi_fetcher import BangumiFetcher
         from processors.scan_processors import process_normal_folder
-        from processors.xml_mode_handler import create_xml_mode_handler
 
-        # 惰性初始化：仅首个文件夹创建一次（保持原 run() 内的延迟导入语义）
-        if self._xml_handler is None:
-            self._xml_handler = create_xml_mode_handler(
-                _FullMatchContext(self._gui_callback, self.manga_value))
-            self._xml_ctx = self._xml_handler.processor
+        # 惰性初始化：仅首个文件夹创建一次
+        if self._fetcher is None:
             self._fetcher = BangumiFetcher()
 
         # 1. 已有 XML 处理（弹窗询问；'cancel' 终止整个扫描）
-        xml_status, xml_stats = self._xml_handler.check_folder_xml(folder_path, folder_info)
-        result = self._xml_handler.handle_existing_xml(folder_path, folder_info, 0,
-                                                       xml_status, xml_stats)
-        if self._xml_ctx._cancelled:
-            self.log_message.emit("🛑 用户取消扫描")
-            self._is_running = False
-            return None
-        if result is not None:
-            if result.get("skipped"):
-                self.log_message.emit("⏭️ 跳过此系列（已有XML）")
-                return None
-            # 'modify'：从 XML 读取的只读结果，仍弹编辑确认
-            result["process_status"] = "已修改"
-            return RESULT_READY, result
+        handled, xml_out = self.check_existing_xml(folder_path, folder_info)
+        if handled:
+            return xml_out  # None → 跳过； (RESULT_READY, result) → 修改结果
 
         # 2. Bangumi 搜索匹配（含多结果选择/无结果处理弹窗）
         scan_result = process_normal_folder(folder_path, folder_info, self._fetcher, 0,

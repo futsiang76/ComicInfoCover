@@ -150,6 +150,12 @@ class ManhuaguiScanThread(BaseScanThread):
             self._fetcher = ManhuaguiFetcher()
             self._template_handler = create_xml_template_handler()
 
+        # 1. 已有 XML 处理（弹窗询问；'cancel' 终止整个扫描）
+        handled, xml_out = self.check_existing_xml(folder_path, folder_info)
+        if handled:
+            return xml_out  # None → 跳过； (RESULT_READY, result) → 修改结果
+
+        # 2. manhuagui 搜索 → 结果选择 → 详情抓取
         return _search_and_select_manhuagui(
             _ThreadMwProxy(self), folder_path, folder_info,
             self._fetcher, self._template_handler, gui_callback=self._gui_callback)

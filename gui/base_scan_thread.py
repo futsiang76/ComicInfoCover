@@ -10,7 +10,7 @@
 """
 
 import os
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -18,8 +18,38 @@ from .gui_dialogs import DialogBridge
 
 
 # 哨兵：search_and_select 返回 (RESULT_READY, result_dict) 表示结果已构建完毕
-# （全匹配模式「已有 XML 修改」路径使用，跳过 build_result 直接进入编辑确认）
+# （「已有 XML 修改」路径使用，跳过 build_result 直接进入编辑确认）
 RESULT_READY = object()
+
+
+class _XmlScanContext:
+    """供 XmlModeHandler 使用的最小处理器上下文（所有扫描源共用）
+
+    复用 xml_mode_handler 的「已有 XML 分流」逻辑（模式 0：有 XML 时弹窗询问
+    处理方式），避免在 scan_controller 及各源线程中重复实现。
+    """
+
+    mode_skip_xml = 0
+    auto_turbo = False
+
+    def __init__(self, gui_callback: Callable, manga_value: Optional[str]):
+        self.gui_callback = gui_callback
+        self.manga_value = manga_value
+        self.skipped = 0
+        self.auto_processed = 0
+        self._cancelled = False
+
+    def _create_result_dict(self, folder_path: str, folder_info: Dict,
+                            comic_info_base, selected_result, skipped: bool,
+                            process_status: str) -> Dict:
+        from processors.result_builder import create_result_dict
+        return create_result_dict(folder_path, folder_info, comic_info_base,
+                                  selected_result, skipped, process_status)
+
+    def _create_result_dict_from_xml(self, folder_path: str, folder_info: Dict,
+                                     xml_result: Dict) -> Dict:
+        from processors.result_builder import create_result_dict_from_xml
+        return create_result_dict_from_xml(folder_path, folder_info, xml_result)
 
 
 class _ThreadLog:
@@ -79,6 +109,9 @@ class BaseScanThread(QThread):
         self.folders = list(folders or [])
         self._is_running = True
         self._total = 1
+        # 已有 XML 分流处理器（惰性初始化，所有源共用）
+        self._xml_handler = None
+        self._xml_ctx = None
         # 对话框桥接器（在 __init__ 中创建，确保主线程亲和性）
         self._bridge = DialogBridge(parent)
 
@@ -184,6 +217,42 @@ class BaseScanThread(QThread):
                 return {'accepted': False, 'data': None}
             return None
         return self._bridge.invoke(action, **params)
+
+    def _init_xml_handler(self) -> None:
+        """惰性初始化已有 XML 分流处理器（仅首个文件夹创建一次）"""
+        if self._xml_handler is None:
+            from processors.xml_mode_handler import create_xml_mode_handler
+            self._xml_handler = create_xml_mode_handler(
+                _XmlScanContext(self._gui_callback, self.manga_value))
+            self._xml_ctx = self._xml_handler.processor
+
+    def check_existing_xml(self, folder_path: str, folder_info: Dict) -> Tuple[bool, Optional[Any]]:
+        """已有 XML 分流（所有源统一入口）
+
+        有 XML 时弹窗询问处理方式（mode 0 语义）：'modify' 返回只读结果直接进入
+        编辑确认，'skip' 跳过该系列，'cancel' 终止整个扫描（置 _is_running=False）。
+
+        Returns:
+            (True, (RESULT_READY, result_dict))：XML 修改结果，直接进入编辑确认；
+            (True, None)：跳过此系列（'skip'/'cancel'，日志已输出）；
+            (False, None)：无 XML 或选择重扫，继续正常搜索流程。
+        """
+        self._init_xml_handler()
+        xml_status, xml_stats = self._xml_handler.check_folder_xml(folder_path, folder_info)
+        result = self._xml_handler.handle_existing_xml(folder_path, folder_info, 0,
+                                                       xml_status, xml_stats)
+        if self._xml_ctx._cancelled:
+            self.log_message.emit("🛑 用户取消扫描")
+            self._is_running = False
+            return True, None
+        if result is not None:
+            if result.get("skipped"):
+                self.log_message.emit("⏭️  跳过此系列（已有XML）")
+                return True, None
+            # 'modify'：从 XML 读取的只读结果，仍弹编辑确认
+            result["process_status"] = "已修改"
+            return True, (RESULT_READY, result)
+        return False, None
 
     def stop(self) -> None:
         """停止扫描：置运行标志 + 取消当前等待中的对话框"""
