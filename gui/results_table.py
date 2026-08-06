@@ -202,7 +202,7 @@ def _volume_card(filename: str, info: dict, on_click=None) -> QWidget:
     name_label = QLabel(os.path.basename(filename))
     name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     name_label.setWordWrap(True)
-    name_label.setMaximumWidth(THUMB_WIDTH)
+    name_label.setMinimumWidth(THUMB_WIDTH)
     name_label.setStyleSheet("color: #555; font-size: 11px;")
     inner.addWidget(name_label, 0, Qt.AlignmentFlag.AlignHCenter)
     layout.addLayout(inner)
