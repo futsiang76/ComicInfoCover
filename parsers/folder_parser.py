@@ -231,11 +231,11 @@ def _extract_numbers(text):
             nums = [total + current]
     return nums
 def _is_tag_content(text):
-    """判断括号内容是否为 tag（黑名单命中或展会码 C97/C99/C100）"""
+    """判断括号内容是否为 tag（黑名单命中、展会码 C97/C99/C100、或缺卷说明 缺...）"""
     t = text.strip()
     if not t:
         return False
-    if t in TAG_BLACKLIST or re.match(r"^C\d{2,3}$", t, re.IGNORECASE):
+    if t in TAG_BLACKLIST or t.startswith("缺") or re.match(r"^C\d{2,3}$", t, re.IGNORECASE):
         return True
     low = t.lower()
     return any(len(w) > 1 and w in low for w in TAG_BLACKLIST)
@@ -335,6 +335,8 @@ def parse_folder_name_lenient(folder_name, folder_path=None):
         c = content.strip()
         if not c:
             continue
+        tags += [p for p in c.split() if p.startswith("缺")]  # 缺卷说明 → tag（如 缺V21）
+        c = " ".join(p for p in c.split() if not p.startswith("缺")).strip()
         if VOL_RE.search(c):
             vol_info = c
             nums = _extract_numbers(c)
@@ -382,7 +384,7 @@ def parse_folder_name_lenient(folder_name, folder_path=None):
     elif vol_type != "短篇" and ongoing_hint:
         complete, vol_type = False, "连载"
     extras = list(dict.fromkeys(extras))
-    aliases = list(dict.fromkeys(aliases))
+    aliases = list(dict.fromkeys(a for a in aliases if a))
     tags = list(dict.fromkeys(tags))
     return {
         "author": author,
