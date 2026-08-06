@@ -11,11 +11,13 @@ from PyQt6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QHeaderView,
                              QLabel, QLineEdit, QPushButton, QTableWidget,
                              QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget)
 
+from gui.crop_queue import _open_single_crop_flow
+from gui.results_table import THUMB_HEIGHT, _cover_with_badge
 from models.edit_state import EditState
 
 
 class TitleEditDialog(QDialog):
-    """Title编辑对话框 - 编辑系列中各本书的Title"""
+    """Title编辑对话框 - 编辑系列中各本书的Title（含封面缩略图列 + 裁剪入口）"""
 
     def __init__(self, data: Union[Dict, EditState], parent=None, selected_filename: str = None):
         super().__init__(parent)
@@ -25,6 +27,7 @@ class TitleEditDialog(QDialog):
             self.state = EditState(data)
         self._selected_filename = selected_filename
         self._initial_locked_files = set(self.state.locked_files)
+        self.crop_running = False  # 封面裁剪后台任务标志（供 crop_queue 复用）
         self.init_ui()
 
     def init_ui(self):
@@ -34,7 +37,7 @@ class TitleEditDialog(QDialog):
             self.setWindowTitle(f"编辑卷信息 - {series_name} - {self._selected_filename}")
         else:
             self.setWindowTitle(f"编辑各卷信息 - {series_name}")
-        self.setMinimumSize(1000, 600)
+        self.setMinimumSize(1100, 600)
 
         layout = QVBoxLayout()
 
@@ -51,8 +54,8 @@ class TitleEditDialog(QDialog):
 
         # 表格
         self.title_table = QTableWidget()
-        self.title_table.setColumnCount(7)
-        self.title_table.setHorizontalHeaderLabels(["文件名", "Title", "Volume", "发行时间", "Summary", "标签", "🔒 锁定"])
+        self.title_table.setColumnCount(8)
+        self.title_table.setHorizontalHeaderLabels(["文件名", "Title", "Volume", "发行时间", "Summary", "标签", "🔒 锁定", "封面"])
         header = self.title_table.horizontalHeader()
         if header:
             header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
@@ -62,6 +65,7 @@ class TitleEditDialog(QDialog):
             header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
             header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
             header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
             header.setStyleSheet("""
                 QHeaderView::section {
                     background-color: #4CAF50;
@@ -165,6 +169,11 @@ class TitleEditDialog(QDialog):
             lock_layout.addWidget(lock_checkbox)
             lock_layout.setContentsMargins(0, 0, 0, 0)
             self.title_table.setCellWidget(row, 6, lock_widget)
+
+            # 封面列 - 缩略图 + 异常角标，点击弹裁剪界面
+            cover_info = self.state.covers.get(filename) if self.state.covers else None
+            self.title_table.setCellWidget(row, 7, self._make_cover_cell(filename, cover_info))
+            self.title_table.setRowHeight(row, THUMB_HEIGHT + 8)
 
         layout.addWidget(self.title_table)
 
@@ -302,6 +311,32 @@ class TitleEditDialog(QDialog):
                 return editor.toPlainText()
         item = self.title_table.item(row, col)
         return item.text() if item else ""
+
+    def _make_cover_cell(self, filename: str, info) -> QWidget:
+        """封面缩略图单元格：缩略图 + 异常角标，点击弹裁剪界面"""
+        return _cover_with_badge(
+            info,
+            bool(info) and info.get("ratio_ok") is False,
+            lambda: self._open_crop_for(filename),
+        )
+
+    def _open_crop_for(self, filename: str):
+        """点击封面缩略图 → 打开裁剪对话框；完成后刷新该卷缩略图"""
+        if not self.state.covers or filename not in self.state.covers:
+            return
+        _open_single_crop_flow(
+            self, self.state.covers, filename,
+            on_done=lambda: self._refresh_cover_cell(filename),
+        )
+
+    def _refresh_cover_cell(self, filename: str):
+        """裁剪完成后重渲染该卷封面单元格（缩略图/角标更新）"""
+        for row in range(self.title_table.rowCount()):
+            item = self.title_table.item(row, 0)
+            if item and item.text() == filename:
+                info = self.state.covers.get(filename) if self.state.covers else None
+                self.title_table.setCellWidget(row, 7, self._make_cover_cell(filename, info))
+                break
 
     def accept(self):
         """重写accept，将正在编辑的控件内容写回item"""

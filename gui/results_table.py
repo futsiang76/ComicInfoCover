@@ -9,7 +9,7 @@ P2 封面展示：
 - 封面比例异常（非 870x1230±10% 竖版）→ 红色「需裁剪」角标
 
 P3 裁剪交互：
-- 「需裁剪」封面缩略图可点击（ClickableLabel）→ 弹裁剪对话框
+- 所有封面缩略图可点击（ClickableLabel）→ 弹裁剪对话框；仅比例异常叠加红色角标
 - 确定后后台裁剪并重打包（__new 排第一位），完成后角标消失、缩略图换新
 """
 
@@ -18,7 +18,8 @@ import os
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (QFormLayout, QGridLayout, QGroupBox, QHBoxLayout,
-                             QLabel, QPushButton, QVBoxLayout, QWidget)
+                             QLabel, QPushButton, QSizePolicy, QVBoxLayout,
+                             QWidget)
 
 from gui.crop_queue import _open_crop_flow
 from processors.cover_utils import read_cover_bytes, sort_volume_files
@@ -169,12 +170,15 @@ def _crop_badge() -> QLabel:
 
 
 def _cover_with_badge(info: dict, show_badge: bool, on_click=None) -> QWidget:
-    """封面缩略图 + 右上角异常角标（同网格单元格叠加，角标浮于图右上角）"""
+    """封面缩略图 + 右上角异常角标（同网格单元格叠加，角标浮于图右上角）
+
+    所有封面均可点击裁剪（合格封面无角标但可点，异常封面带红色角标）。
+    """
     container = QWidget()
     layout = QGridLayout(container)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(0)
-    layout.addWidget(_cover_thumbnail(info, on_click if show_badge else None), 0, 0)
+    layout.addWidget(_cover_thumbnail(info, on_click), 0, 0)
     if show_badge:
         layout.addWidget(
             _crop_badge(), 0, 0,
@@ -265,7 +269,9 @@ def update_results_table(mw):
         group_box.setStyleSheet(GROUP_BOX_STYLE)
 
         outer_layout = QVBoxLayout()
+        outer_layout.setSpacing(0)  # 收起/展开网格时紧贴表头，不留默认 6px
         header_layout = QHBoxLayout()
+        header_layout.setSpacing(0)  # 左侧封面列与右侧信息列贴紧
 
         # 左侧列：首卷封面缩略图（异常则叠加红色角标，可点击裁剪）+ 正下方的「展开」按钮
         covers = result.get("covers", {}) or {}
@@ -286,6 +292,7 @@ def update_results_table(mw):
         )
         cover_block = QVBoxLayout()
         cover_block.setSpacing(0)  # 「裁剪封面」紧贴展开/收起按钮上方
+        cover_block.setContentsMargins(0, 8, 0, 0)  # 缩略图与卡片顶部留间距（不顶头）
         cover_block.addWidget(
             _cover_with_badge(
                 first_info,
@@ -296,7 +303,10 @@ def update_results_table(mw):
         )
         crop_label = QLabel("裁剪封面")
         crop_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        crop_label.setContentsMargins(0, 0, 0, 0)  # 无内边距，紧贴按钮
         crop_label.setStyleSheet("color: #666; font-size: 12px;")
+        # 禁止纵向拉伸：否则标签会吃掉卡片剩余高度，文字与展开按钮拉开视觉间距
+        crop_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         cover_block.addWidget(crop_label, 0, Qt.AlignmentFlag.AlignHCenter)
         cover_block.addWidget(expand_btn, 0, Qt.AlignmentFlag.AlignHCenter)
         header_layout.addLayout(cover_block)

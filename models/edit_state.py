@@ -31,6 +31,7 @@ class EditState:
         # Volume-level data
         self.file_titles = data.get("file_titles", {})  # {filename: title}
         self.file_details = data.get("file_details", {})  # {filename: {volume, year, month, summary}}
+        self.covers = data.get("covers", {})  # {filename: {path, width, height, ratio_ok}}
 
         # Lock states
         self.locked_files = data.get("locked_files", set())  # set of locked filenames
