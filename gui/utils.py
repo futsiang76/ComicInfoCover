@@ -35,7 +35,7 @@ def start_loading_cat(mw) -> None:
     movie = getattr(mw, "loading_cat_movie", None)
     if label is None or movie is None:
         return
-    label.move(8, -175)  # 子控件坐标系：定位到进度条上方
+    label.move(8, -75)  # 子控件坐标系：100px 高时底部对齐进度条底，上方留 75px
     label.show()
     label.raise_()  # 浮到进度条之上不被遮挡
     if movie.state() != QMovie.MovieState.Running:

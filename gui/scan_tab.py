@@ -295,7 +295,7 @@ def build_scan_tab(mw, tab_widget):
 
     # 工作小猫加载动画：子控件挂进度条，move+raise_ 悬浮覆盖其上方（鼠标穿透）
     mw.loading_cat_label = QLabel(mw.progress_bar)
-    mw.loading_cat_label.setFixedSize(200, 200)
+    mw.loading_cat_label.setFixedSize(100, 100)
     mw.loading_cat_label.setScaledContents(True)
     mw.loading_cat_label.setAttribute(
         Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)

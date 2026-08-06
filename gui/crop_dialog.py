@@ -5,6 +5,7 @@
 - 显示原图 + 锁定竖版 870x1230 比例的裁剪框（拖拽移动 + 右下角手柄等比缩放，不能拉成横版）
 - 初始裁剪框居中（007 智能推荐区域 → P4 记忆系统再引入）
 - 按钮对齐 007：确定(裁剪)/取消/跳过
+- 画布随窗口 resize：图片等比缩放，裁剪框坐标在 原图坐标 ↔ 显示坐标 之间换算（B1）
 
 结果语义（对齐 007 crop_selector）：
     确定 → crop_region = (x, y, w, h) 原图坐标，对话框返回 Accepted
@@ -21,7 +22,6 @@ from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton,
 from processors.cover_utils import (STANDARD_HEIGHT, STANDARD_WIDTH,
                                     get_zip_first_image, read_zip_entry)
 
-CANVAS_SIZE = (960, 620)  # 画布固定尺寸
 HANDLE_SIZE = 14          # 右下角缩放手柄边长
 MIN_CROP_HEIGHT = 40      # 裁剪框最小高度（显示坐标）
 
@@ -39,7 +39,12 @@ PLAIN_STYLE = """
 
 
 class _CropCanvas(QWidget):
-    """裁剪画布：渲染缩放后的原图 + 遮罩 + 锁定比例的裁剪框 + 缩放手柄"""
+    """裁剪画布：渲染缩放后的原图 + 遮罩 + 锁定比例的裁剪框 + 缩放手柄
+
+    画布尺寸由对话框布局驱动（去掉固定尺寸，可随窗口 resize）。
+    图片按画布尺寸等比缩放显示；裁剪框以「原图坐标」为基准，resize 时按新缩放
+    换算显示坐标，保证窗口拖大后图片与裁剪框同步放大（B1）。
+    """
 
     CROP_RATIO = STANDARD_WIDTH / STANDARD_HEIGHT  # 870/1230 ≈ 0.707
 
@@ -49,11 +54,12 @@ class _CropCanvas(QWidget):
         self._error = None
         self._disp_rect = QRectF()   # 图片在画布上的显示区域
         self._scale = 1.0            # 显示坐标 → 原图坐标的缩放
-        self._crop = QRectF()        # 裁剪框（显示坐标）
+        self._orig_crop = QRectF()   # 裁剪框（原图坐标，resize 时保持稳定）
+        self._crop = QRectF()        # 裁剪框（显示坐标，由 _orig_crop 换算）
         self._dragging = False
         self._resizing = False
         self._drag_anchor = QPointF()
-        self.setFixedSize(*CANVAS_SIZE)
+        self.setMinimumSize(300, 200)
         self.setMouseTracking(True)
 
     # ---------- 图片装载 ----------
@@ -63,7 +69,8 @@ class _CropCanvas(QWidget):
         self._pixmap = pixmap
         self._error = None
         self._layout_image()
-        self._crop = self._initial_crop()
+        self._orig_crop = self._initial_crop()
+        self._crop = self._to_display(self._orig_crop)
         self.update()
 
     def set_error(self, message: str) -> None:
@@ -71,8 +78,17 @@ class _CropCanvas(QWidget):
         self._error = message
         self.update()
 
+    def resizeEvent(self, event) -> None:
+        """画布尺寸变化：重排图片显示区，并按新缩放重算裁剪框显示坐标"""
+        self._layout_image()
+        if self._pixmap is not None:
+            self._crop = self._to_display(self._orig_crop)
+        self.update()
+
     def _layout_image(self) -> None:
-        """按画布尺寸等比缩放原图，居中放置（不放大超过原图）"""
+        """按当前画布尺寸等比缩放原图，居中放置（不放大超过原图）"""
+        if self._pixmap is None:
+            return
         img_w, img_h = self._pixmap.width(), self._pixmap.height()
         scale = min(self.width() / img_w, self.height() / img_h, 1.0)
         disp_w, disp_h = img_w * scale, img_h * scale
@@ -82,19 +98,33 @@ class _CropCanvas(QWidget):
         self._scale = scale
 
     def _initial_crop(self) -> QRectF:
-        """初始裁剪框：满足 870x1230 比例的最大内接框，居中"""
-        dw, dh = self._disp_rect.width(), self._disp_rect.height()
-        if dw / dh >= self.CROP_RATIO:
-            h = dh
-            w = dh * self.CROP_RATIO
-            x = (dw - w) / 2
+        """初始裁剪框（原图坐标）：满足 870x1230 比例的最大内接框，居中"""
+        img_w, img_h = self._pixmap.width(), self._pixmap.height()
+        if img_w / img_h >= self.CROP_RATIO:
+            h = img_h
+            w = img_h * self.CROP_RATIO
+            x = (img_w - w) / 2
             y = 0.0
         else:
-            w = dw
-            h = dw / self.CROP_RATIO
+            w = img_w
+            h = img_w / self.CROP_RATIO
             x = 0.0
-            y = (dh - h) / 2
-        return QRectF(self._disp_rect.x() + x, self._disp_rect.y() + y, w, h)
+            y = (img_h - h) / 2
+        return QRectF(x, y, w, h)
+
+    def _to_display(self, orig: QRectF) -> QRectF:
+        """原图坐标裁剪框 → 显示坐标（基于当前显示区与缩放）"""
+        s = self._scale
+        return QRectF(self._disp_rect.x() + orig.x() * s,
+                      self._disp_rect.y() + orig.y() * s,
+                      orig.width() * s, orig.height() * s)
+
+    def _from_display(self, disp: QRectF) -> QRectF:
+        """显示坐标裁剪框 → 原图坐标"""
+        s = self._scale
+        return QRectF((disp.x() - self._disp_rect.x()) / s,
+                      (disp.y() - self._disp_rect.y()) / s,
+                      disp.width() / s, disp.height() / s)
 
     # ---------- 绘制 ----------
 
@@ -153,6 +183,7 @@ class _CropCanvas(QWidget):
             self._clamp_move()
         else:
             self._resize_to(pos)
+        self._orig_crop = self._from_display(self._crop)  # 每次交互同步原图坐标
         self.update()
 
     def mouseReleaseEvent(self, event) -> None:
@@ -183,11 +214,10 @@ class _CropCanvas(QWidget):
 
     def crop_region(self) -> tuple:
         """返回原图坐标裁剪区域 (x, y, width, height)"""
-        s = self._scale
-        x = int(round((self._crop.x() - self._disp_rect.x()) / s))
-        y = int(round((self._crop.y() - self._disp_rect.y()) / s))
-        w = max(1, int(round(self._crop.width() / s)))
-        h = max(1, int(round(self._crop.height() / s)))
+        x = int(round(self._orig_crop.x()))
+        y = int(round(self._orig_crop.y()))
+        w = max(1, int(round(self._orig_crop.width())))
+        h = max(1, int(round(self._orig_crop.height())))
         return (x, y, w, h)
 
 

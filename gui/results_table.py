@@ -15,21 +15,26 @@ P3 裁剪交互：
 
 import os
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import (QDialog, QFormLayout, QGridLayout, QGroupBox,
-                             QHBoxLayout, QLabel, QMessageBox, QPushButton,
-                             QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QFormLayout, QGridLayout, QGroupBox, QHBoxLayout,
+                             QLabel, QPushButton, QVBoxLayout, QWidget)
 
-from gui.crop_dialog import CropDialog
-from processors.cover_crop import crop_zip_cover
+from gui.crop_queue import _open_crop_flow
 from processors.cover_utils import read_cover_bytes, sort_volume_files
 
 # 封面缩略图尺寸（870x1230 竖版比例）
 THUMB_WIDTH = 100
 THUMB_HEIGHT = 141
-# 卷封面网格列数（超宽自动换行）
-GRID_COLUMNS = 4
+# 卷封面网格间距与列数下限（B5：列数按窗口宽度自适应）
+GRID_SPACING = 10
+MIN_GRID_COLUMNS = 4
+
+
+def grid_columns(available_width: int) -> int:
+    """按可用宽度计算卷封面网格列数：单格(缩略图+间距)，窄屏保底 4 列，宽屏自动加列（8+）"""
+    cell_width = THUMB_WIDTH + GRID_SPACING
+    return max(MIN_GRID_COLUMNS, int(available_width) // cell_width)
 
 GROUP_BOX_STYLE = """
     QGroupBox {
@@ -101,63 +106,6 @@ class ClickableLabel(QLabel):
     def leaveEvent(self, event):
         self.unsetCursor()
         super().leaveEvent(event)
-
-
-class _CropWorker(QThread):
-    """后台执行封面裁剪 + ZIP 重打包，避免大图操作阻塞 UI 主线程"""
-
-    done = pyqtSignal(object)
-    failed = pyqtSignal(str)
-
-    def __init__(self, zip_path: str, crop_region: tuple, parent=None):
-        super().__init__(parent)
-        self._zip_path = zip_path
-        self._crop_region = crop_region
-
-    def run(self):
-        try:
-            info = crop_zip_cover(self._zip_path, self._crop_region)
-            if info:
-                self.done.emit(info)
-            else:
-                self.failed.emit("未能完成裁剪（图片解析或 ZIP 打包失败）")
-        except Exception as e:
-            self.failed.emit(str(e))
-
-
-def _on_crop_done(mw, result, filename, new_info):
-    """裁剪完成：更新该卷封面信息并重渲染结果页（角标消失、缩略图换新）"""
-    mw.crop_running = False
-    if new_info:
-        result["covers"][filename] = new_info
-    mw.update_results_table()
-
-
-def _on_crop_failed(mw, filename, message):
-    """裁剪失败：恢复可裁剪状态并提示"""
-    mw.crop_running = False
-    QMessageBox.warning(mw, "裁剪失败", f"{filename} 封面裁剪失败：{message}")
-
-
-def _open_crop_flow(mw, result, filename):
-    """点击「需裁剪」封面 → 弹裁剪对话框；确定后后台执行裁剪与重打包"""
-    info = result.get("covers", {}).get(filename)
-    if not info or not info.get("path") or getattr(mw, "crop_running", False):
-        return
-    dialog = CropDialog(info["path"], mw)
-    if dialog.exec() != QDialog.DialogCode.Accepted:
-        return  # 取消/跳过：不改文件
-    region = dialog.crop_region
-    if not isinstance(region, tuple):
-        return
-    mw.crop_running = True
-    worker = _CropWorker(info["path"], region, mw)
-    worker.done.connect(
-        lambda new_info, r=result, f=filename: _on_crop_done(mw, r, f, new_info))
-    worker.failed.connect(
-        lambda msg, f=filename: _on_crop_failed(mw, f, msg))
-    mw._crop_worker = worker  # 持有引用，防止 worker 被 GC
-    worker.start()
 
 
 def _placeholder_label() -> QLabel:
@@ -251,18 +199,40 @@ def _volume_card(filename: str, info: dict, on_click=None) -> QWidget:
     return card
 
 
+class _VolumeGrid(QWidget):
+    """卷封面网格：列数随宽度自适应，resize 时重排（复用已建缩略图，避免重复读 zip）"""
+
+    def __init__(self, cards: list, parent=None):
+        super().__init__(parent)
+        self._cards = cards
+        self._grid_layout = QGridLayout(self)
+        self._grid_layout.setContentsMargins(0, 8, 0, 0)
+        self._grid_layout.setSpacing(GRID_SPACING)
+        self._relayout(grid_columns(self.width()))
+
+    def _relayout(self, cols: int) -> None:
+        """按列数重新摆放卡片"""
+        for card in self._cards:
+            self._grid_layout.removeWidget(card)
+        for idx, card in enumerate(self._cards):
+            row, col = divmod(idx, cols)
+            self._grid_layout.addWidget(card, row, col)
+
+    def resizeEvent(self, event) -> None:
+        """窗口宽度变化导致可用宽度跨过列数阈值时重排"""
+        if grid_columns(event.size().width()) != grid_columns(event.oldSize().width()):
+            self._relayout(grid_columns(event.size().width()))
+        super().resizeEvent(event)
+
+
 def _build_volume_grid(result: dict, make_handler) -> QWidget:
-    """该系列全部卷封面的缩略图网格（固定列数，超出自动换行）"""
+    """该系列全部卷封面的缩略图网格（列数按宽度自适应，宽屏 8+ 列，窄屏 4 列）"""
     covers = result.get("covers", {}) or {}
-    grid = QWidget()
-    grid_layout = QGridLayout(grid)
-    grid_layout.setContentsMargins(0, 8, 0, 0)
-    grid_layout.setSpacing(10)
-    for idx, filename in enumerate(sort_volume_files(list(covers.keys()))):
-        row, col = divmod(idx, GRID_COLUMNS)
-        grid_layout.addWidget(
-            _volume_card(filename, covers[filename], make_handler(filename)), row, col)
-    return grid
+    cards = [
+        _volume_card(filename, covers[filename], make_handler(filename))
+        for filename in sort_volume_files(list(covers.keys()))
+    ]
+    return _VolumeGrid(cards)
 
 
 def _toggle_volume_grid(result: dict, holder: QWidget, btn: QPushButton,
@@ -296,32 +266,11 @@ def update_results_table(mw):
         outer_layout = QVBoxLayout()
         header_layout = QHBoxLayout()
 
-        # 左侧：首卷封面缩略图（异常则叠加红色角标，可点击裁剪）
+        # 左侧列：首卷封面缩略图（异常则叠加红色角标，可点击裁剪）+ 正下方的「展开」按钮
         covers = result.get("covers", {}) or {}
         sorted_names = sort_volume_files(list(covers.keys()))
         first_name = sorted_names[0] if sorted_names else None
         first_info = covers.get(first_name) if first_name else None
-        header_layout.addWidget(
-            _cover_with_badge(
-                first_info,
-                bool(first_info) and first_info.get("ratio_ok") is False,
-                _make_crop_handler(result, first_name) if first_name else None,
-            )
-        )
-
-        # 右侧：卷数徽章 + 信息表单 + 操作
-        info_layout = QVBoxLayout()
-
-        # 卷数徽章 + 展开/收起按钮
-        top_row = QHBoxLayout()
-        vol_count = len(result.get("file_details", {}) or {}) or result.get("count", "")
-        count_badge = QLabel(f"📚 共 {vol_count} 卷")
-        count_badge.setStyleSheet(
-            "background-color: #4CAF50; color: white; font-size: 11px;"
-            "font-weight: bold; border-radius: 9px; padding: 2px 10px;"
-        )
-        top_row.addWidget(count_badge)
-        top_row.addStretch()
 
         grid_holder = QWidget()
         grid_layout = QVBoxLayout(grid_holder)
@@ -334,7 +283,30 @@ def update_results_table(mw):
             lambda _, r=result, g=grid_holder, b=expand_btn:
             _toggle_volume_grid(r, g, b, lambda f: _make_crop_handler(r, f))
         )
-        top_row.addWidget(expand_btn)
+        cover_block = QVBoxLayout()
+        cover_block.addWidget(
+            _cover_with_badge(
+                first_info,
+                bool(first_info) and first_info.get("ratio_ok") is False,
+                _make_crop_handler(result, first_name) if first_name else None,
+            ),
+            0, Qt.AlignmentFlag.AlignHCenter,
+        )
+        cover_block.addWidget(expand_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+        header_layout.addLayout(cover_block)
+
+        # 右侧：卷数徽章 + 信息表单 + 操作
+        info_layout = QVBoxLayout()
+
+        top_row = QHBoxLayout()
+        vol_count = len(result.get("file_details", {}) or {}) or result.get("count", "")
+        count_badge = QLabel(f"📚 共 {vol_count} 卷")
+        count_badge.setStyleSheet(
+            "background-color: #4CAF50; color: white; font-size: 11px;"
+            "font-weight: bold; border-radius: 9px; padding: 2px 10px;"
+        )
+        top_row.addWidget(count_badge)
+        top_row.addStretch()
         info_layout.addLayout(top_row)
 
         card_layout = QFormLayout()
