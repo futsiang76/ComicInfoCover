@@ -248,10 +248,15 @@ def show_result_selection_dialog(parent: QWidget, search_results: List[Dict],
 
 def show_multi_result_dialog(parent: QWidget, search_results: List[Dict],
                               folder_info: Dict,
-                              alt_keywords: Optional[List[str]] = None
+                              alt_keywords: Optional[List[str]] = None,
+                              allow_id_search: bool = True
                               ) -> Optional[Dict]:
-    """显示多结果选择对话框（兼容包装，委托给统一函数）"""
-    return show_result_selection_dialog(parent, search_results, folder_info, alt_keywords)
+    """显示多结果选择对话框（兼容包装，委托给统一函数）
+
+    allow_id_search 透传给统一对话框（manhuagui/ComicVine 传 False 隐藏「按Bangumi ID查找」）。
+    """
+    return show_result_selection_dialog(parent, search_results, folder_info,
+                                        alt_keywords, allow_id_search)
 
 
 def show_no_result_dialog(parent: QWidget, folder_info: Dict,

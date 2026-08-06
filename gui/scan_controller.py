@@ -148,9 +148,34 @@ def _start_manhuagui_scan(mw, manga_root: str) -> None:
     if manga_value is None:
         return
 
-    # 4. 单系列扫描流程（搜索走 manhuagui）
-    from .manhuagui_scan import _run_manhuagui_single_scan
-    _run_manhuagui_single_scan(mw, manga_root, manga_value, folders)
+    # 3.5 清空日志/结果（主线程操作，对应原 _run_manhuagui_single_scan 的初始化）
+    mw.log_text.clear()
+    mw.log_text.append(f"开始扫描: {manga_root}")
+    mw.log_text.append("数据源: manhuagui")
+    mw.log_text.append(f"Manga设置: {manga_value}")
+    mw.scan_results = []
+    mw.update_results_table()
+
+    # 4. 单系列扫描流程（搜索走 manhuagui，后台线程执行，对齐全匹配 FullMatchThread）
+    from .manhuagui_scan import ManhuaguiScanThread
+
+    thread = ManhuaguiScanThread(manga_root, manga_value, folders, parent=mw)
+    mw.scan_thread = thread
+    thread.progress_updated.connect(partial(_on_full_match_progress, mw))
+    thread.progress_range.connect(partial(_on_full_match_progress_range, mw))
+    thread.log_message.connect(partial(_on_full_match_log, mw))
+    thread.scan_completed.connect(partial(_on_full_match_completed, mw))
+    thread.series_saved.connect(partial(_on_full_match_series_saved, mw))
+    thread.series_finished.connect(partial(_on_manhuagui_series_finished, mw))
+    thread.error_occurred.connect(partial(on_error_occurred, mw))
+
+    mw.scan_btn.setEnabled(False)
+    mw.stop_btn.setEnabled(True)
+    mw.progress_bar.setRange(0, 0)  # 不确定进度（后台线程开始时由信号校正）
+
+    start_loading_cat(mw)  # manhuagui 扫描等待期显示工作小猫动画
+
+    thread.start()
 
 
 def _start_comicvine_scan(mw, manga_root: str) -> None:
@@ -402,6 +427,14 @@ def _on_full_match_log(mw, message: str) -> None:
 def _on_full_match_series_finished(mw, processed: int, skipped: int) -> None:
     """全匹配模式收尾信号：追加统计消息（主线程槽）"""
     mw.log_text.append(f"\n全匹配完成: 共处理 {processed} 个系列，跳过 {skipped} 个")
+    vbar = mw.log_text.verticalScrollBar()
+    if vbar is not None:
+        vbar.setValue(vbar.maximum())
+
+
+def _on_manhuagui_series_finished(mw, processed: int, skipped: int) -> None:
+    """manhuagui 单系列扫描收尾信号：追加统计消息（主线程槽）"""
+    mw.log_text.append(f"\nmanhuagui 扫描完成: 共处理 {processed} 个系列，跳过 {skipped} 个")
     vbar = mw.log_text.verticalScrollBar()
     if vbar is not None:
         vbar.setValue(vbar.maximum())
