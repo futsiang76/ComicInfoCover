@@ -212,7 +212,6 @@ class _VolumeGrid(QWidget):
         self._grid_layout = QGridLayout(self)
         self._grid_layout.setContentsMargins(0, 8, 0, 0)
         self._grid_layout.setSpacing(GRID_SPACING)
-        self._grid_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)  # 展开网格整体居中
         self._relayout(grid_columns(self.width()))
 
     def _relayout(self, cols: int) -> None:
