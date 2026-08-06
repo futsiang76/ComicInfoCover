@@ -168,6 +168,26 @@ def _read_prefix(zf: zipfile.ZipFile, name: str, size: int = _PREFIX_BYTES) -> b
         return f.read(size)
 
 
+def get_zip_first_image(zip_path: str) -> Optional[str]:
+    """返回 zip 内排序最小的图片条目名（当前封面），供 P3 裁剪定位原图"""
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            return _first_image_name(zf)
+    except Exception as e:
+        print(f"⚠️   封面定位失败 [{os.path.basename(zip_path)}]: {str(e)[:60]}")
+        return None
+
+
+def read_zip_entry(zip_path: str, entry_name: str) -> Optional[bytes]:
+    """读取 zip 内指定条目原始字节（P3 裁剪原图用，不受 MAX_COVER_BYTES 限制）"""
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            return zf.read(entry_name)
+    except Exception as e:
+        print(f"⚠️   读取 zip 条目失败 [{os.path.basename(zip_path)}]: {str(e)[:60]}")
+        return None
+
+
 def get_zip_cover_info(zip_path: str) -> Optional[Dict]:
     """解析 zip 首图尺寸与比例判定
 
