@@ -37,7 +37,7 @@ def _unlock_controls(mw) -> None:
 
 def start_scan(mw):
     """开始扫描"""
-    manga_root = mw.path_edit.text().strip()
+    manga_root = mw.path_edit.text().strip().strip('"\'')
     if not manga_root:
         QMessageBox.warning(mw, "警告", "请先选择漫画根目录")
         return
