@@ -47,7 +47,6 @@ COMICINFO_TEMPLATE = {
     "Manga": "Yes",        # 是否漫画
     "AgeRating": "",       # 年龄分级
     "Tags": "",            # 标签
-    "Author": "",          # 作者（自定义字段）
     "Status": "",          # 状态（Completed/Ongoing）
     "Rating": ""           # 评分
 }

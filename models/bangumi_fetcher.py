@@ -430,22 +430,18 @@ class BangumiFetcher:
             # 没有任何作者信息，使用文件夹作者
             writer_str = folder_info["author"]
             penciller_str = ""
-            author_str = folder_info["author"]
         elif len(story_authors) == 0 and len(art_authors) > 0:
             # 只有绘画作者（包括Bangumi的"作者"），全部放入Writer，Penciller留空
             writer_str = ", ".join(art_authors)
             penciller_str = ""
-            author_str = ", ".join(art_authors)
         elif len(story_authors) > 0 and len(art_authors) == 0:
             # 只有故事作者，全部放入Writer，Penciller留空
             writer_str = ", ".join(story_authors)
             penciller_str = ""
-            author_str = ", ".join(story_authors)
         else:
             # 同时有故事作者和绘画作者，分别放入对应字段
             writer_str = ", ".join(story_authors)
             penciller_str = ", ".join(art_authors)
-            author_str = ", ".join(story_authors)  # Author字段优先使用故事作者
 
         # 根据完结状态决定Volume字段
         # 如果已完结，填写总卷数；如果连载中，留空
@@ -457,7 +453,6 @@ class BangumiFetcher:
             "Series": folder_info["series"],
             "Count": volume_value,  # 已完结填写总卷数，连载中留空
             "Volume": "",  # 单本书的卷数将在后续处理中填充
-            "Author": author_str,
             "Writer": writer_str,
             "Penciller": penciller_str,
             "Publisher": "",

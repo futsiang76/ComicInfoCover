@@ -218,7 +218,6 @@ class ManhuaguiFetcher:
         comic_info = {
             "Title": title,
             "Series": title,
-            "Author": author,
             "Writer": author,
             "Penciller": author,
             "Summary": summary,

@@ -44,6 +44,15 @@ def _merge_folder_tags(existing_tags: str, folder_name: str) -> str:
             existing.append(tag)
     return ', '.join(existing)
 
+
+def _apply_author_fill(writer: str, penciller: str) -> tuple:
+    """单向补齐：Writer/Penciller 只有一个时，另一个也填同一人"""
+    if writer and not penciller:
+        return writer, writer
+    if penciller and not writer:
+        return penciller, penciller
+    return writer, penciller
+
 def create_result_dict(folder_path: str, folder_info: Dict, 
                        comic_info_base: Optional[Dict], selected_result: Optional[Dict],
                        skipped: bool, process_status: str, source: str = "bangumi") -> Dict:
@@ -114,6 +123,10 @@ def create_result_dict(folder_path: str, folder_info: Dict,
     except Exception:
         pass
 
+    writer, penciller = _apply_author_fill(
+        comic_info_base.get("Writer", "") if comic_info_base else folder_info.get("author", ""),
+        comic_info_base.get("Penciller", "") if comic_info_base else "",
+    )
     result = {
         "folder_path": folder_path,
         "folder_name": os.path.basename(folder_path),
@@ -123,8 +136,8 @@ def create_result_dict(folder_path: str, folder_info: Dict,
         "covers": covers,
         "locked_files": locked_files,
         "count": comic_info_base.get("Count", "") if comic_info_base else "",
-        "writer": comic_info_base.get("Writer", "") if comic_info_base else folder_info.get("author", ""),
-        "penciller": comic_info_base.get("Penciller", "") if comic_info_base else "",
+        "writer": writer,
+        "penciller": penciller,
         "colorist": comic_info_base.get("Colorist", "") if comic_info_base else "",
         "year": comic_info_base.get("Year", "") if comic_info_base else "",
         "month": comic_info_base.get("Month", "") if comic_info_base else "",
@@ -243,6 +256,10 @@ def create_result_dict_from_xml(folder_path: str, folder_info: Dict,
     except Exception:
         pass
 
+    writer, penciller = _apply_author_fill(
+        comic_info_base.get("Writer", "") if comic_info_base else folder_info.get("author", ""),
+        comic_info_base.get("Penciller", "") if comic_info_base else "",
+    )
     result = {
         "folder_path": folder_path,
         "folder_name": os.path.basename(folder_path),
@@ -252,8 +269,8 @@ def create_result_dict_from_xml(folder_path: str, folder_info: Dict,
         "covers": covers,
         "locked_files": locked_files,
         "count": comic_info_base.get("Count", "") if comic_info_base else "",
-        "writer": comic_info_base.get("Writer", "") if comic_info_base else folder_info.get("author", ""),
-        "penciller": comic_info_base.get("Penciller", "") if comic_info_base else "",
+        "writer": writer,
+        "penciller": penciller,
         "colorist": comic_info_base.get("Colorist", "") if comic_info_base else "",
         "year": comic_info_base.get("Year", "") if comic_info_base else "",
         "month": comic_info_base.get("Month", "") if comic_info_base else "",

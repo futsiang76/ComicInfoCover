@@ -44,6 +44,7 @@ class XMLTemplateHandler:
             "Title": folder_info["series"],
             "Series": folder_info["series"],
             "Writer": folder_info["author"],
+            "Penciller": folder_info["author"],  # Writer/Penciller 单向补齐
             "Summary": "",
             "Tags": "短篇" if is_short_story else "",
         })
@@ -261,17 +262,22 @@ class XMLTemplateHandler:
                             all_authors.append(author_name)
         
         # 应用作者分配规则
-        # 规则1: 如果所有角色都是同一个人A，则A成为Author和Writer，不填Penciller
+        # 规则1: 如果只有一个作者A，则Writer和Penciller都填A（ComicInfo XML 无 Author 字段）
         if len(all_authors) == 1:
             single_author = all_authors[0]
             authors["Writer"] = single_author
-            authors["Penciller"] = ""
+            authors["Penciller"] = single_author
         
-        # 规则2: 如果有多人但都写作"作画"，则所有人都填成Author和Writer，不填Penciller
+        # 规则2: 如果只有Penciller没有Writer，则Writer也填Penciller（两个都填同一个人）
         elif authors["Penciller"] and not authors["Writer"]:
             authors["Writer"] = authors["Penciller"]
-            authors["Penciller"] = ""
-        
+
+        # 兜底: Writer 和 Penciller 单向补齐（覆盖剩余分支，如只有 Writer 无 Penciller）
+        if authors["Writer"] and not authors["Penciller"]:
+            authors["Penciller"] = authors["Writer"]
+        elif authors["Penciller"] and not authors["Writer"]:
+            authors["Writer"] = authors["Penciller"]
+
         return authors
     
     def _extract_year_month(self, date_str: str) -> Dict[str, str]:
