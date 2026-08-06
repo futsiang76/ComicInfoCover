@@ -90,6 +90,42 @@ def _build_xml_stats_html(stats: dict) -> str:
     return html
 
 
+def _normalize_source_name(source) -> str:
+    """规范化数据源显示名：去掉「（默认）」后缀，空值兜底 Bangumi"""
+    if not source:
+        return "Bangumi"
+    return source.split("（", 1)[0].strip() or "Bangumi"
+
+
+def _resolve_source_name(mw) -> str:
+    """从 mw 解析当前数据源显示名，取不到时兜底 Bangumi"""
+    source = getattr(mw, "selected_source", None)
+    if not source:
+        source_combo = getattr(mw, "source_combo", None)
+        if source_combo is not None:
+            current_text = getattr(source_combo, "currentText", None)
+            if callable(current_text):
+                source = current_text()
+    return _normalize_source_name(source)
+
+
+def _build_xml_options_html(mw) -> str:
+    """构建弹窗选项说明 HTML，数据源名随 mw 当前源动态化"""
+    source_name = _resolve_source_name(mw)
+    return f"""
+    <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 10px;">
+        <b>📝 直接修改已有XML</b><br>
+        <span style="color: #666;">从XML文件读取元数据到编辑界面，不修改原文件，不进行{source_name}搜索</span>
+        <br><br>
+        <b>🔄 重新扫描生成XML</b><br>
+        <span style="color: #666;">使用全匹配模式，重新从{source_name}获取信息并生成新的XML文件</span>
+        <br><br>
+        <b>⏭️ 跳过检查，按当前模式继续</b><br>
+        <span style="color: #666;">使用当前选择的运行模式继续扫描</span>
+    </div>
+    """
+
+
 def show_xml_exists_dialog(mw, stats: dict) -> str:
     """显示XML文件存在对话框，返回用户选择"""
     folder_name = stats.get("folder_name", "") or stats.get("series", "")
@@ -127,20 +163,8 @@ def show_xml_exists_dialog(mw, stats: dict) -> str:
     detail_label.setStyleSheet("font-size: 14px; font-weight: bold; padding: 10px;")
     layout.addWidget(detail_label)
     
-    # 选项说明
-    options_text = """
-    <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 10px;">
-        <b>📝 直接修改已有XML</b><br>
-        <span style="color: #666;">从XML文件读取元数据到编辑界面，不修改原文件，不进行Bangumi搜索</span>
-        <br><br>
-        <b>🔄 重新扫描生成XML</b><br>
-        <span style="color: #666;">使用全匹配模式，重新从Bangumi获取信息并生成新的XML文件</span>
-        <br><br>
-        <b>⏭️ 跳过检查，按当前模式继续</b><br>
-        <span style="color: #666;">使用当前选择的运行模式继续扫描</span>
-    </div>
-    """
-    options_label = QLabel(options_text)
+    # 选项说明（数据源名随当前源动态化）
+    options_label = QLabel(_build_xml_options_html(mw))
     options_label.setStyleSheet("font-size: 13px; padding: 5px;")
     options_label.setWordWrap(True)
     layout.addWidget(options_label)
