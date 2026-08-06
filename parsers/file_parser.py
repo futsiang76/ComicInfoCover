@@ -221,13 +221,14 @@ def parse_folder_from_filename(folder_path: str) -> Optional[Dict]:
             return None
 
         # 从文件名提取信息，不打印日志
+        # 文件名只有单卷信息，不能判定已完结 → complete=False（未完结语义）
         return {
             "author": file_info["author"],
             "series": file_info["series"],
             "vol_info": "V01",
             "total_volumes": 1,
             "vol_type": "连载",
-            "complete": True,
+            "complete": False,
             "has_extras": False,
             "extras": "",
             "from_filename": True

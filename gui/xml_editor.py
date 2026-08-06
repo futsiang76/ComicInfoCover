@@ -85,7 +85,7 @@ def on_edit_xml_clicked(mw):
     """扫描页"编辑XML"按钮点击处理"""
     from processors.utils import process_xml_modify_folder
     from processors.result_builder import create_result_dict_from_xml
-    from parsers.folder_parser import parse_folder_name
+    from parsers.folder_parser import parse_folder_name_lenient
     from processors.xml_generator import XMLGenerator, build_full_comicinfo_dict
     from processors.zip_handler import add_file_to_zip
 
@@ -106,7 +106,7 @@ def on_edit_xml_clicked(mw):
         results_list = []
         for sub in sorted(subdirs):
             sub_path = os.path.join(current_dir, sub)
-            folder_info = parse_folder_name(sub, sub_path)
+            folder_info = parse_folder_name_lenient(sub, sub_path)
             if not folder_info:
                 folder_info = {"series": sub, "author": "", "volume": "",
                                "total_volumes": 0, "complete": False}
@@ -148,7 +148,7 @@ def on_edit_xml_clicked(mw):
 
     # ── 单系列目录模式（直接含zip文件） ──
     folder_name = os.path.basename(current_dir)
-    folder_info = parse_folder_name(folder_name, current_dir)
+    folder_info = parse_folder_name_lenient(folder_name, current_dir)
     if not folder_info:
         folder_info = {"series": folder_name, "author": "", "volume": "",
                        "total_volumes": 0, "complete": False}

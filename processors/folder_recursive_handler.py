@@ -8,7 +8,7 @@ import os
 from typing import Any, Callable, Dict, List, Tuple
 
 from parsers.file_parser import parse_folder_from_filename
-from parsers.folder_parser import parse_folder_name
+from parsers.folder_parser import parse_folder_name_lenient
 
 
 class FolderRecursiveHandler:
@@ -54,7 +54,7 @@ class FolderRecursiveHandler:
             try:
                 # 首先检查当前目录本身是否是合法的漫画文件夹
                 current_dir_name = os.path.basename(current_path)
-                folder_info = parse_folder_name(current_dir_name, current_path)
+                folder_info = parse_folder_name_lenient(current_dir_name, current_path)
                 if not folder_info:
                     # 尝试从文件名提取信息
                     folder_info = parse_folder_from_filename(current_path)
@@ -97,7 +97,7 @@ class FolderRecursiveHandler:
                         continue
                     
                     # 检查是否是合法的漫画文件夹
-                    folder_info = parse_folder_name(item, item_path)
+                    folder_info = parse_folder_name_lenient(item, item_path)
                     if not folder_info:
                         # 尝试从文件名提取信息
                         folder_info = parse_folder_from_filename(item_path)
@@ -181,7 +181,7 @@ class FolderRecursiveHandler:
                         continue
                     
                     # 检查是否是合法的漫画文件夹
-                    folder_info = parse_folder_name(item, item_path)
+                    folder_info = parse_folder_name_lenient(item, item_path)
                     if not folder_info:
                         # 尝试从文件名提取信息
                         folder_info = parse_folder_from_filename(item_path)
@@ -268,7 +268,7 @@ class FolderRecursiveHandler:
                         continue
                     
                     # 检查是否是合法的漫画文件夹
-                    folder_info = parse_folder_name(item, item_path)
+                    folder_info = parse_folder_name_lenient(item, item_path)
                     if not folder_info:
                         folder_info = parse_folder_from_filename(item_path)
                     

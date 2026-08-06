@@ -266,7 +266,7 @@ def _collect_series_folders(manga_root: str) -> List[Tuple[str, Dict]]:
         List[Tuple[str, Dict]]: [(folder_path, folder_info), ...]
     """
     from parsers.file_parser import parse_folder_from_filename
-    from parsers.folder_parser import parse_folder_name
+    from parsers.folder_parser import parse_folder_name_lenient
 
     comic_ext = ('.zip', '.cbz', '.cbr', '.rar')
     folders = []
@@ -277,7 +277,7 @@ def _collect_series_folders(manga_root: str) -> List[Tuple[str, Dict]]:
             continue
         if not any(f.lower().endswith(comic_ext) for f in files):
             continue
-        folder_info = parse_folder_name(os.path.basename(root), root)
+        folder_info = parse_folder_name_lenient(os.path.basename(root), root)
         if not folder_info:
             folder_info = parse_folder_from_filename(root)
         if folder_info:

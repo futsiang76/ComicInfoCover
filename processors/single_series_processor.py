@@ -11,7 +11,7 @@ from typing import Dict, Optional, Tuple
 
 from config import BANGUMI_ACCESS_TOKEN
 from models.bangumi_fetcher import BangumiFetcher
-from parsers.folder_parser import parse_folder_name
+from parsers.folder_parser import parse_folder_name_lenient
 from processors.interaction_handler import create_interaction_handler
 from processors.xml_template_handler import create_xml_template_handler
 from processors.zip_handler import create_file_handler
@@ -69,7 +69,7 @@ class SingleSeriesProcessor:
         try:
             # 解析文件夹信息
             folder_name = os.path.basename(folder_path)
-            folder_info = parse_folder_name(folder_name, folder_path)
+            folder_info = parse_folder_name_lenient(folder_name, folder_path)
             
             if not folder_info:
                 print(f"❌ 无法解析文件夹信息: {folder_name}")
@@ -119,7 +119,7 @@ class SingleSeriesProcessor:
         try:
             # 解析文件夹信息
             folder_name = os.path.basename(folder_path)
-            folder_info = parse_folder_name(folder_name)
+            folder_info = parse_folder_name_lenient(folder_name)
             
             # 如果无法从文件夹名称解析，说明是不规则文件夹
             # 每个zip文件都是一个独立的单卷系列，需要分开解析
