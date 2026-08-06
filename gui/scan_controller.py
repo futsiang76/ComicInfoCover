@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import QMessageBox
 
 from .scan_thread import ScanThread
 from .edit_dialog import EditDialog
-from .gui_dialogs import DialogBridge, show_bangumi_id_not_found
 from .utils import start_loading_cat, stop_loading_cat
 
 
@@ -62,9 +61,10 @@ def start_scan(mw):
     mw.scan_results = []
     mw.update_results_table()
 
-    # 手动匹配模式：逐个系列文件夹「输入→查询→确认」，在主线程循环（不走 ScanThread 批量流程）
+    # 手动匹配模式：逐个系列文件夹「输入→查询→确认」，后台线程执行
+    # （弹窗经 DialogBridge 桥接主线程，主线程不阻塞，小猫动画持续刷新）
     if mode == 3:
-        _run_manual_match_scan(mw, manga_root, manga_value)
+        _start_manual_match_scan(mw, manga_root, manga_value)
         return
 
     # 全匹配模式（非无人值守）：逐个系列「扫描→确认→保存」，后台线程执行
@@ -100,6 +100,8 @@ def start_scan(mw):
     mw.scan_btn.setEnabled(False)
     mw.stop_btn.setEnabled(True)
     mw.progress_bar.setRange(0, 0)  # 不确定进度
+
+    start_loading_cat(mw)  # 批量扫描等待期显示工作小猫动画
 
     mw.scan_thread.start()
 
@@ -179,7 +181,7 @@ def _start_manhuagui_scan(mw, manga_root: str) -> None:
 
 
 def _start_comicvine_scan(mw, manga_root: str) -> None:
-    """ComicVine 源扫描入口：多系列拦截 → Manga 设置 → 单系列扫描
+    """ComicVine 源扫描入口：多系列拦截 → Manga 设置 → 单系列扫描（后台线程）
 
     ComicVine 源只支持单系列目录：多系列在扫描前拦截弹窗，不开始扫。
     requests 直连无额外依赖，无需依赖检查（与 manhuagui 分支不同）。
@@ -198,9 +200,34 @@ def _start_comicvine_scan(mw, manga_root: str) -> None:
     if manga_value is None:
         return
 
-    # 3. 单系列扫描流程（搜索走 ComicVine）
-    from .comicvine_scan import _run_comicvine_single_scan
-    _run_comicvine_single_scan(mw, manga_root, manga_value, folders)
+    # 2.5 清空日志/结果（主线程操作，对应原 _run_comicvine_single_scan 的初始化）
+    mw.log_text.clear()
+    mw.log_text.append(f"开始扫描: {manga_root}")
+    mw.log_text.append("数据源: ComicVine")
+    mw.log_text.append(f"Manga设置: {manga_value}")
+    mw.scan_results = []
+    mw.update_results_table()
+
+    # 3. 单系列扫描流程（搜索走 ComicVine，后台线程执行）
+    from .comicvine_scan import ComicVineScanThread
+
+    thread = ComicVineScanThread(manga_root, manga_value, folders, parent=mw)
+    mw.scan_thread = thread
+    thread.progress_updated.connect(partial(_on_full_match_progress, mw))
+    thread.progress_range.connect(partial(_on_full_match_progress_range, mw))
+    thread.log_message.connect(partial(_on_full_match_log, mw))
+    thread.scan_completed.connect(partial(_on_full_match_completed, mw, mode=0))
+    thread.series_saved.connect(partial(_on_full_match_series_saved, mw))
+    thread.series_finished.connect(partial(_on_comicvine_series_finished, mw))
+    thread.error_occurred.connect(partial(on_error_occurred, mw))
+
+    mw.scan_btn.setEnabled(False)
+    mw.stop_btn.setEnabled(True)
+    mw.progress_bar.setRange(0, 0)  # 不确定进度（后台线程开始时由信号校正）
+
+    start_loading_cat(mw)  # ComicVine 扫描等待期显示工作小猫动画
+
+    thread.start()
 
 
 def _collect_series_folders(manga_root: str) -> List[Tuple[str, Dict]]:
@@ -235,100 +262,38 @@ def _collect_series_folders(manga_root: str) -> List[Tuple[str, Dict]]:
     return folders
 
 
-def _run_manual_match_scan(mw, manga_root: str, manga_value: Optional[str]) -> None:
-    """手动匹配模式主流程：在主线程逐个系列文件夹「输入→查询→确认」
+def _start_manual_match_scan(mw, manga_root: str, manga_value: Optional[str]) -> None:
+    """手动匹配模式（mode 3）扫描入口：后台线程逐个系列「输入→查询→确认」
 
     每个文件夹：
       1. 弹窗输入 Bangumi ID（0=使用本地文件夹信息）
       2. 查询 Bangumi 详情并构建 comic_info_base（本地则直接构建）
       3. 构建结果并立即弹 EditDialog 确认
       4. 确认后写入 XML，进入下一个文件夹
-    """
-    from PyQt6.QtWidgets import QDialog
 
-    from models.bangumi_fetcher import BangumiFetcher
-    from processors.result_builder import create_result_dict
-    from processors.single_series_processor import build_comic_info_from_id
-    from processors.xml_template_handler import create_xml_template_handler
+    弹窗经 DialogBridge 桥接主线程，进度/日志/结果经信号更新，主线程不阻塞。
+    """
+    from .manual_match_scan import ManualMatchThread
+
+    folders = _collect_series_folders(manga_root)
+
+    thread = ManualMatchThread(manga_root, manga_value, folders, parent=mw)
+    mw.scan_thread = thread
+    thread.progress_updated.connect(partial(_on_full_match_progress, mw))
+    thread.progress_range.connect(partial(_on_full_match_progress_range, mw))
+    thread.log_message.connect(partial(_on_full_match_log, mw))
+    thread.scan_completed.connect(partial(_on_full_match_completed, mw, mode=3))
+    thread.series_saved.connect(partial(_on_full_match_series_saved, mw))
+    thread.series_finished.connect(partial(_on_manual_series_finished, mw))
+    thread.error_occurred.connect(partial(on_error_occurred, mw))
 
     mw.scan_btn.setEnabled(False)
     mw.stop_btn.setEnabled(True)
+    mw.progress_bar.setRange(0, 0)  # 不确定进度（后台线程开始时由信号校正）
 
-    folders = _collect_series_folders(manga_root)
-    total = len(folders)
-    mw.progress_bar.setRange(0, max(1, total))
-    mw.progress_bar.setValue(0)
+    start_loading_cat(mw)  # 手动匹配扫描等待期显示工作小猫动画
 
-    fetcher = BangumiFetcher()
-    template_handler = create_xml_template_handler()
-    processed = 0
-    skipped = 0
-
-    for idx, (folder_path, folder_info) in enumerate(folders, start=1):
-        mw.progress_bar.setValue(idx - 1)
-        folder_name = os.path.basename(folder_path)
-        mw.log_text.append(f"\n[{idx}/{total}] 📁 {folder_name}")
-
-        # 1. 输入 Bangumi ID
-        bangumi_id = DialogBridge._show_single_series_input(mw, folder_path, folder_info)
-        if not bangumi_id:
-            mw.log_text.append("⏭️ 未输入，跳过此系列")
-            skipped += 1
-            continue
-
-        # 2. 查询并构建 comic_info_base
-        if bangumi_id == "0":
-            # 3.2 输入 0：按本地文件夹信息构建，不查 Bangumi
-            comic_info_base = template_handler.create_local_template(folder_info)
-            selected_result = None
-            mw.log_text.append("📋 使用本地文件夹信息")
-        else:
-            try:
-                numeric_id = int(bangumi_id)
-            except ValueError:
-                QMessageBox.warning(mw, "无效输入", f"Bangumi ID 必须是数字: {bangumi_id}，跳过此系列")
-                mw.log_text.append("❌ 无效的 Bangumi ID，跳过")
-                skipped += 1
-                continue
-            built = build_comic_info_from_id(fetcher, numeric_id, folder_info)
-            if not built:
-                # 3.3 查询失败：报错后自动跳过，进入下一个文件夹
-                show_bangumi_id_not_found(mw, bangumi_id, folder_name)
-                mw.log_text.append("❌ 未找到该 ID 的作品，跳过此系列")
-                skipped += 1
-                continue
-            comic_info_base, selected_result = built
-            title_cn = selected_result.get("name_cn") or selected_result.get("name", "")
-            mw.log_text.append(f"🎯 获取到: {title_cn}")
-        comic_info_base["Manga"] = manga_value or comic_info_base.get("Manga", "Yes")
-
-        # 3. 构建结果并立即弹编辑确认
-        result = create_result_dict(folder_path, folder_info, comic_info_base,
-                                    selected_result, skipped=False, process_status="已修改")
-        dialog = EditDialog(result, mw)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            mw.log_text.append("⏭️ 取消编辑，跳过此系列")
-            skipped += 1
-            continue
-
-        # 4. 确认后写入 XML
-        updated = dialog.get_data()
-        result.update(updated)
-        result["process_status"] = "已修改"
-        mw.scan_results.append(result)
-        mw.update_results_table()
-        mw.save_changes(show_result=False)
-        processed += 1
-
-    mw.progress_bar.setValue(total)
-    mw.progress_bar.setRange(0, 1)
-    mw.progress_bar.setValue(1)
-    mw.scan_btn.setEnabled(True)
-    mw.stop_btn.setEnabled(False)
-    mw.log_text.append(f"\n手动匹配完成: 共处理 {processed} 个系列，跳过 {skipped} 个")
-
-    # 统一收尾：有结果 → 结果页；无结果 → 留在扫描页
-    _finish_scan(mw, mw.scan_results, 3)
+    thread.start()
 
 
 def check_xml_before_scan(mw, manga_root: str) -> tuple:
@@ -440,6 +405,22 @@ def _on_manhuagui_series_finished(mw, processed: int, skipped: int) -> None:
         vbar.setValue(vbar.maximum())
 
 
+def _on_comicvine_series_finished(mw, processed: int, skipped: int) -> None:
+    """ComicVine 单系列扫描收尾信号：追加统计消息（主线程槽）"""
+    mw.log_text.append(f"\nComicVine 扫描完成: 共处理 {processed} 个系列，跳过 {skipped} 个")
+    vbar = mw.log_text.verticalScrollBar()
+    if vbar is not None:
+        vbar.setValue(vbar.maximum())
+
+
+def _on_manual_series_finished(mw, processed: int, skipped: int) -> None:
+    """手动匹配模式收尾信号：追加统计消息（主线程槽）"""
+    mw.log_text.append(f"\n手动匹配完成: 共处理 {processed} 个系列，跳过 {skipped} 个")
+    vbar = mw.log_text.verticalScrollBar()
+    if vbar is not None:
+        vbar.setValue(vbar.maximum())
+
+
 def _on_full_match_series_saved(mw, result: Dict) -> None:
     """全匹配模式逐系列保存信号：结果入库 → 刷新结果表 → 立即静默写盘（主线程槽）
 
@@ -450,11 +431,12 @@ def _on_full_match_series_saved(mw, result: Dict) -> None:
     mw.save_changes(show_result=False)
 
 
-def _on_full_match_completed(mw, results: List[Dict]) -> None:
-    """全匹配模式完成信号：统一收尾（主线程槽）
+def _on_full_match_completed(mw, results: List[Dict], mode: int = 0) -> None:
+    """全匹配/manhuagui/ComicVine/手动匹配模式完成信号：统一收尾（主线程槽）
 
     结果已由 series_saved 逐系列保存并写盘，此处仅兜底刷新结果表，
     不重复 save_changes。results 参数保留以兼容既有调用方。
+    mode 标识来源模式，用于 _finish_scan 路由（008 封面流程挂载点）。
     """
     stop_loading_cat(mw)
     mw.update_results_table()
@@ -462,13 +444,14 @@ def _on_full_match_completed(mw, results: List[Dict]) -> None:
     mw.stop_btn.setEnabled(False)
     mw.progress_bar.setRange(0, 1)
     mw.progress_bar.setValue(1)
-    _finish_scan(mw, mw.scan_results, 0)
+    _finish_scan(mw, mw.scan_results, mode)
 
 
 def on_scan_completed(mw, results: List[Dict]):
     """扫描完成"""
     from PyQt6.QtWidgets import QDialog
 
+    stop_loading_cat(mw)
     mw.scan_results = results
     mw.progress_bar.setRange(0, 1)
     mw.progress_bar.setValue(1)

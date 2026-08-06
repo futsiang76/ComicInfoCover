@@ -1,46 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-manhuagui 单系列扫描流程（后台线程版）
+manhuagui 单系列扫描流程 - 基于 BaseScanThread
 
-用户主动选择 manhuagui 数据源时使用，与 FullMatchThread 同构：
+用户主动选择 manhuagui 数据源时使用，与全匹配模式同构：
 「搜索 → 结果选择 → 详情抓取 → EditDialog 确认 → 写入 XML」。
 manhuagui 源只支持单系列，多系列目录已在 scan_controller 中拦截。
 
-线程化要点：
-- 弹窗全部经 DialogBridge 桥接到主线程（search_failure/select_result/edit_result），
-  工作线程不直接创建任何 widget。
-- 进度/日志/结果经信号回主线程更新进度条、日志和结果表。
-- 逐系列确认后立即发 series_saved 写盘（与全匹配模式一致）。
+本模块只保留 manhuagui 特有的搜索配置（_search_and_select_manhuagui +
+结果构建），线程化/信号/弹窗桥接/逐系列保存全部由 BaseScanThread 提供。
 """
 
-import os
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
-from PyQt6.QtCore import QThread, pyqtSignal
-
-from .gui_dialogs import DialogBridge, show_no_result_dialog, show_result_selection_dialog
-
-
-class _ThreadLog:
-    """工作线程日志接收器：log_text.append 转发到 log_message 信号
-
-    让 _search_and_select_manhuagui 复用主线程代码时只需写 mw.log_text.append，
-    实际输出走信号回主线程，不触碰任何 widget。
-    """
-
-    def __init__(self, thread: QThread):
-        self._thread = thread
-
-    def append(self, message: str) -> None:
-        self._thread.log_message.emit(message)
-
-
-class _ThreadMwProxy:
-    """工作线程内的主窗口最小代理：只提供日志，不做任何 widget 操作"""
-
-    def __init__(self, thread: QThread):
-        self.log_text = _ThreadLog(thread)
+from .base_scan_thread import BaseScanThread, _ThreadMwProxy
+from .gui_dialogs import show_no_result_dialog, show_result_selection_dialog
 
 
 def _build_from_bangumi_id(mw, value: str, folder_info: Dict, template_handler) -> Tuple[Dict, Optional[Dict]]:
@@ -147,118 +121,48 @@ def _search_and_select_manhuagui(mw, folder_path: str, folder_info: Dict, fetche
     return comic_info_base, selected
 
 
-class ManhuaguiScanThread(QThread):
+class ManhuaguiScanThread(BaseScanThread):
     """manhuagui 单系列扫描后台线程
 
-    逐个系列「manhuagui 搜索 → 结果选择 → 详情 → EditDialog 确认 → 写入 XML」，
-    仿照 FullMatchThread：弹窗经 DialogBridge 桥接主线程，进度/日志/结果走信号，
-    主线程事件循环保持运行（进度条/小猫动画持续刷新、取消按钮可用）。
-    逐系列确认后立即发 series_saved 写盘，防中途崩溃丢已确认结果。
+    基于 BaseScanThread，只保留 manhuagui 特有的搜索配置：
+    「manhuagui 搜索 → 结果选择 → 详情抓取 → 结果构建」。
+    逐个系列「搜索 → EditDialog 确认 → 写入 XML」由框架提供。
     """
 
-    progress_updated = pyqtSignal(int, str)   # (进度值, 状态消息)
-    progress_range = pyqtSignal(int, int)     # (min, max)，对应 setRange 语义
-    log_message = pyqtSignal(str)
-    scan_completed = pyqtSignal(list)          # 收集到的结果列表
-    series_saved = pyqtSignal(dict)            # 单系列确认结果（逐系列即时保存）
-    error_occurred = pyqtSignal(str)
-    series_finished = pyqtSignal(int, int)     # (processed, skipped) 收尾用
+    source_name = "manhuagui"
 
     def __init__(self, manga_root: str, manga_value: Optional[str],
-                 folders: Optional[List[Tuple[str, Dict]]], parent=None):
-        super().__init__()
-        self.manga_root = manga_root
-        self.manga_value = manga_value
-        self.folders = folders or []
-        self._is_running = True
-        # 对话框桥接器（在 __init__ 中创建，确保主线程亲和性）
-        self._bridge = DialogBridge(parent)
+                 folders=None, parent=None):
+        super().__init__(manga_root, manga_value, folders=folders, parent=parent)
+        self._fetcher = None
+        self._template_handler = None
 
-    def run(self) -> None:
-        """后台逐系列「manhuagui 搜索 → 确认 → 保存」主循环"""
-        try:
-            from models.manhuagui_fetcher import ManhuaguiFetcher
-            from processors.result_builder import create_result_dict
-            from processors.xml_template_handler import create_xml_template_handler
-            from .scan_controller import _collect_series_folders
+    def search_and_select(self, folder_path: str, folder_info: Dict):
+        """manhuagui 搜索 → 结果选择 → 详情抓取
 
-            folders = self.folders
-            if not folders:
-                folders = _collect_series_folders(self.manga_root)
-            total = max(1, len(folders))
-            self.progress_range.emit(0, total)
-            self.progress_updated.emit(0, f"manhuagui 扫描: 共 {total} 个系列")
+        返回 (comic_info_base, selected_result)；comic_info_base 为 None 表示跳过
+        """
+        from models.manhuagui_fetcher import ManhuaguiFetcher
+        from processors.xml_template_handler import create_xml_template_handler
 
-            proxy = _ThreadMwProxy(self)
-            fetcher = ManhuaguiFetcher()
-            template_handler = create_xml_template_handler()
-            processed = 0
-            skipped = 0
-            results: List[Dict] = []
+        # 惰性初始化：仅首个文件夹创建一次（fetcher 在 cleanup 中统一关闭）
+        if self._fetcher is None:
+            self._fetcher = ManhuaguiFetcher()
+            self._template_handler = create_xml_template_handler()
 
-            try:
-                for idx, (folder_path, folder_info) in enumerate(folders, start=1):
-                    if not self._is_running:
-                        break
-                    folder_name = os.path.basename(folder_path)
-                    self.progress_updated.emit(idx - 1, f"\n[{idx}/{total}] 📁 {folder_name}")
-                    self.progress_range.emit(0, 0)  # 不定进度 -> Qt 滚动动画
+        return _search_and_select_manhuagui(
+            _ThreadMwProxy(self), folder_path, folder_info,
+            self._fetcher, self._template_handler, gui_callback=self._gui_callback)
 
-                    comic_info_base, selected_result = _search_and_select_manhuagui(
-                        proxy, folder_path, folder_info, fetcher, template_handler,
-                        gui_callback=self._gui_callback)
-                    if not self._is_running:
-                        break
-                    if comic_info_base is None:
-                        skipped += 1
-                        continue
-                    comic_info_base["Manga"] = self.manga_value or comic_info_base.get("Manga", "Yes")
+    def build_result(self, folder_path: str, folder_info: Dict,
+                     comic_info_base: Dict, selected_result: Optional[Dict]) -> Dict:
+        """构建 manhuagui 扫描结果字典"""
+        from processors.result_builder import create_result_dict
+        return create_result_dict(folder_path, folder_info, comic_info_base,
+                                  selected_result, skipped=False,
+                                  process_status="已修改", source="manhuagui")
 
-                    # 构建结果并弹编辑确认（经 DialogBridge 主线程弹窗）
-                    result = create_result_dict(folder_path, folder_info, comic_info_base,
-                                                selected_result, skipped=False,
-                                                process_status="已修改", source="manhuagui")
-                    resp = self._gui_callback('edit_result', result=result)
-                    if not self._is_running:
-                        break
-                    if not (resp and resp.get('accepted')):
-                        self.log_message.emit("⏭️ 取消编辑，跳过此系列")
-                        skipped += 1
-                        continue
-
-                    # 确认后写入 XML：逐系列发回主线程立即保存
-                    result.update(resp.get('data') or {})
-                    result["process_status"] = "已修改"
-                    results.append(result)
-                    self.series_saved.emit(result)
-                    processed += 1
-                    self.progress_range.emit(0, total)  # 恢复定进度
-                    self.progress_updated.emit(idx, f"✅ {folder_name} 处理完成")
-            finally:
-                fetcher.close()
-
-            self.progress_updated.emit(total, "")
-            self.progress_range.emit(0, 1)
-            self.progress_updated.emit(1, "")
-            self.scan_completed.emit(results)
-            self.series_finished.emit(processed, skipped)
-
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            self.error_occurred.emit(f"扫描失败: {str(e)}")
-
-    def _gui_callback(self, action: str, **params):
-        """工作线程弹窗回调：桥接到主线程；停止后不再弹窗"""
-        if not self._is_running:
-            if action == 'search_failure':
-                return {'action': 'skip', 'value': None}
-            if action == 'edit_result':
-                return {'accepted': False, 'data': None}
-            return None
-        return self._bridge.invoke(action, **params)
-
-    def stop(self) -> None:
-        """停止扫描：置运行标志 + 取消当前等待中的对话框"""
-        self._is_running = False
-        self._bridge.cancel()
+    def cleanup(self) -> None:
+        """关闭 fetcher 浏览器实例"""
+        if self._fetcher is not None:
+            self._fetcher.close()

@@ -289,6 +289,8 @@ class DialogBridge(QObject):
         - 'single_series_input': 手动匹配模式输入当前系列文件夹的 Bangumi ID
         - 'get_text': 文本输入对话框（ID、关键词等）
         - 'edit_result': 单系列编辑确认对话框（EditDialog，全匹配模式用）
+        - 'bangumi_id_not_found': 查询失败报错弹窗（未找到该 ID 的作品）
+        - 'warning': 通用警告弹窗（手动匹配无效 ID 输入等）
     """
     _request = pyqtSignal(dict)
 
@@ -352,6 +354,13 @@ class DialogBridge(QObject):
                 self._response = self._show_text_dialog(parent, **params)
             elif action == 'edit_result':
                 self._response = self._show_edit_dialog(parent, **params)
+            elif action == 'bangumi_id_not_found':
+                show_bangumi_id_not_found(parent, **params)
+                self._response = None
+            elif action == 'warning':
+                QMessageBox.warning(parent, params.get('title', '警告'),
+                                    params.get('message', ''))
+                self._response = None
             else:
                 self._response = None
         finally:

@@ -1,25 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-全匹配模式（mode 0）逐个交互扫描流程 - 后台线程版
+全匹配模式（mode 0）逐个交互扫描流程 - 基于 BaseScanThread
 
 非无人值守时在后台线程对每个系列文件夹执行：
 「扫描匹配 → EditDialog 确认 → 静默保存 → 下一个」，
 不批量收集后统一编辑，也不弹「保存完成」结果框。
 无人值守（AUTO_TURBO_MATCH=1）仍走 ScanThread 后台批量流程。
 
-线程化要点：
-- 弹窗全部经 DialogBridge 桥接到主线程（select_result/search_failure/
-  xml_exists/edit_result），工作线程不直接创建任何 widget。
-- 进度/日志/结果经信号回主线程更新进度条、日志和结果表。
+本类只保留 bangumi 特有的搜索配置（XML 分流 + 搜索 + 结果构建），
+线程化/信号/弹窗桥接/逐系列保存全部由 BaseScanThread 提供。
 """
 
 import os
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, Optional
 
-from PyQt6.QtCore import QThread, pyqtSignal
-
-from .gui_dialogs import DialogBridge
+from .base_scan_thread import RESULT_READY, BaseScanThread
 
 
 class _FullMatchContext:
@@ -52,137 +48,68 @@ class _FullMatchContext:
         return create_result_dict_from_xml(folder_path, folder_info, xml_result)
 
 
-class FullMatchThread(QThread):
+class FullMatchThread(BaseScanThread):
     """全匹配模式（非无人值守）后台扫描线程
 
-    逐个系列「扫描匹配 → EditDialog 确认 → 保存 → 下一个」，
-    仿照 ScanThread 模式：弹窗走 DialogBridge，进度/日志/结果走信号，
-    主线程事件循环保持运行（进度条/动画持续刷新、取消按钮可用）。
+    基于 BaseScanThread，只保留 bangumi 特有的搜索配置：
+    「已有 XML 分流（弹窗询问）→ Bangumi 搜索匹配 → 结果构建」。
+    逐个系列「扫描匹配 → EditDialog 确认 → 保存 → 下一个」由框架提供。
     """
 
-    progress_updated = pyqtSignal(int, str)   # (进度值, 状态消息)
-    progress_range = pyqtSignal(int, int)     # (min, max)，对应 setRange 语义
-    log_message = pyqtSignal(str)
-    scan_completed = pyqtSignal(list)          # 收集到的结果列表
-    series_saved = pyqtSignal(dict)            # 单系列确认结果（逐系列即时保存）
-    error_occurred = pyqtSignal(str)
-    series_finished = pyqtSignal(int, int)     # (processed, skipped) 收尾用
+    source_name = "bangumi"
+    source_label = "全匹配"
 
     def __init__(self, manga_root: str, manga_value: Optional[str], parent=None):
-        super().__init__()
-        self.manga_root = manga_root
-        self.manga_value = manga_value
-        self._is_running = True
-        # 对话框桥接器（在 __init__ 中创建，确保主线程亲和性）
-        self._bridge = DialogBridge(parent)
+        super().__init__(manga_root, manga_value, parent=parent)
+        self._xml_handler = None
+        self._xml_ctx = None
+        self._fetcher = None
 
-    def run(self) -> None:
-        """后台逐个系列「扫描匹配 → 确认 → 保存」主循环"""
-        try:
-            import config
+    def search_and_select(self, folder_path: str, folder_info: Dict):
+        """已有 XML 分流 + Bangumi 搜索匹配
 
-            from .scan_controller import _collect_series_folders
+        返回 (comic_info_base, selected_result) 或 (RESULT_READY, result)；
+        None 表示跳过（含取消整个扫描，置 _is_running=False）。
+        """
+        from models.bangumi_fetcher import BangumiFetcher
+        from processors.scan_processors import process_normal_folder
+        from processors.xml_mode_handler import create_xml_mode_handler
 
-            # 逐个交互不触发无人值守逻辑（process_normal_folder 运行时读取该配置）
-            config.AUTO_TURBO_MATCH = 0
-            config.MODE_SKIP_XMLEXIST = 0
+        # 惰性初始化：仅首个文件夹创建一次（保持原 run() 内的延迟导入语义）
+        if self._xml_handler is None:
+            self._xml_handler = create_xml_mode_handler(
+                _FullMatchContext(self._gui_callback, self.manga_value))
+            self._xml_ctx = self._xml_handler.processor
+            self._fetcher = BangumiFetcher()
 
-            from models.bangumi_fetcher import BangumiFetcher
-            from processors.result_builder import create_result_dict
-            from processors.scan_processors import process_normal_folder
-            from processors.xml_mode_handler import create_xml_mode_handler
+        # 1. 已有 XML 处理（弹窗询问；'cancel' 终止整个扫描）
+        xml_status, xml_stats = self._xml_handler.check_folder_xml(folder_path, folder_info)
+        result = self._xml_handler.handle_existing_xml(folder_path, folder_info, 0,
+                                                       xml_status, xml_stats)
+        if self._xml_ctx._cancelled:
+            self.log_message.emit("🛑 用户取消扫描")
+            self._is_running = False
+            return None
+        if result is not None:
+            if result.get("skipped"):
+                self.log_message.emit("⏭️ 跳过此系列（已有XML）")
+                return None
+            # 'modify'：从 XML 读取的只读结果，仍弹编辑确认
+            result["process_status"] = "已修改"
+            return RESULT_READY, result
 
-            bridge = self._bridge
+        # 2. Bangumi 搜索匹配（含多结果选择/无结果处理弹窗）
+        scan_result = process_normal_folder(folder_path, folder_info, self._fetcher, 0,
+                                            gui_callback=self._gui_callback)
+        if scan_result.get("skip_files"):
+            self.log_message.emit("⏭️ 跳过此系列")
+            return None
+        comic_info_base = scan_result.get("comic_info_base") or {}
+        return comic_info_base, scan_result.get("selected_result")
 
-            def gui_callback(action: str, **params):
-                """工作线程弹窗回调：桥接到主线程；停止后不再弹窗"""
-                if not self._is_running:
-                    if action == 'search_failure':
-                        return {'action': 'skip', 'value': None}
-                    return None
-                return bridge.invoke(action, **params)
-
-            folders = _collect_series_folders(self.manga_root)
-            total = len(folders)
-            self.progress_range.emit(0, max(1, total))
-            self.progress_updated.emit(0, f"全匹配扫描: 共 {total} 个系列")
-
-            xml_handler = create_xml_mode_handler(_FullMatchContext(gui_callback, self.manga_value))
-            xml_ctx = xml_handler.processor
-            fetcher = BangumiFetcher()
-
-            processed = 0
-            skipped = 0
-            results: List[Dict] = []
-
-            for idx, (folder_path, folder_info) in enumerate(folders, start=1):
-                if not self._is_running:
-                    break
-                folder_name = os.path.basename(folder_path)
-                self.progress_updated.emit(idx - 1, f"\n[{idx}/{total}] 📁 {folder_name}")
-                self.progress_range.emit(0, 0)   # 不定进度 -> Qt 滚动动画
-
-                # 1. 已有 XML 处理（弹窗询问；'cancel' 终止整个扫描）
-                xml_status, xml_stats = xml_handler.check_folder_xml(folder_path, folder_info)
-                result = xml_handler.handle_existing_xml(folder_path, folder_info, 0, xml_status, xml_stats)
-                if not self._is_running:
-                    break
-                if xml_ctx._cancelled:
-                    self.log_message.emit("🛑 用户取消扫描")
-                    break
-                if result is not None:
-                    if result.get("skipped"):
-                        self.log_message.emit("⏭️ 跳过此系列（已有XML）")
-                        skipped += 1
-                        continue
-                    # 'modify'：从 XML 读取的只读结果，仍弹编辑确认
-                    result["process_status"] = "已修改"
-                else:
-                    # 2. Bangumi 搜索匹配（含多结果选择/无结果处理弹窗）
-                    scan_result = process_normal_folder(folder_path, folder_info, fetcher, 0,
-                                                        gui_callback=gui_callback)
-                    if not self._is_running:
-                        break
-                    if scan_result.get("skip_files"):
-                        self.log_message.emit("⏭️ 跳过此系列")
-                        skipped += 1
-                        continue
-                    comic_info_base = scan_result.get("comic_info_base") or {}
-                    comic_info_base["Manga"] = self.manga_value or comic_info_base.get("Manga", "Yes")
-                    result = create_result_dict(folder_path, folder_info, comic_info_base,
-                                                scan_result.get("selected_result"),
-                                                False, "已修改")
-
-                # 3. EditDialog 确认（单系列无导航；经 DialogBridge 主线程弹窗）
-                resp = gui_callback('edit_result', result=result)
-                if not self._is_running:
-                    break
-                if not (resp and resp.get('accepted')):
-                    self.log_message.emit("⏭️ 取消编辑，跳过此系列")
-                    skipped += 1
-                    continue
-
-                # 4. 确认后收集结果：逐系列发回主线程立即保存（防中途崩溃丢已确认结果）
-                result.update(resp.get('data') or {})
-                result["process_status"] = "已修改"
-                results.append(result)
-                self.series_saved.emit(result)
-                processed += 1
-                self.progress_range.emit(0, total)  # 恢复定进度
-                self.progress_updated.emit(idx, f"✅ {folder_name} 处理完成")
-
-            self.progress_updated.emit(total, "")
-            self.progress_range.emit(0, 1)
-            self.progress_updated.emit(1, "")
-            self.scan_completed.emit(results)
-            self.series_finished.emit(processed, skipped)
-
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            self.error_occurred.emit(f"扫描失败: {str(e)}")
-
-    def stop(self) -> None:
-        """停止扫描：置运行标志 + 取消当前等待中的对话框"""
-        self._is_running = False
-        self._bridge.cancel()
+    def build_result(self, folder_path: str, folder_info: Dict,
+                     comic_info_base: Dict, selected_result: Optional[Dict]) -> Dict:
+        """构建 bangumi 扫描结果字典"""
+        from processors.result_builder import create_result_dict
+        return create_result_dict(folder_path, folder_info, comic_info_base,
+                                  selected_result, False, "已修改")
