@@ -13,6 +13,7 @@ FUZZ_THRESHOLD = 85           # 作品名模糊匹配阈值
 AUTHOR_MATCH_THRESHOLD = 70   # 作者名匹配阈值（任一作者≥70即匹配）
 TIMEOUT = 15                  # 请求超时时间
 MAX_RETRIES = 3               # 请求重试次数
+CROP_MEMORY_ENABLED = True    # 封面裁剪定位记忆开关（默认开启）
 SHOW_TOP_N = 10               # 手动选择时显示前N个结果
 WAITING_TIME = 0             # 等待用户输入的时间（秒），0表示无限等待
 MODE_SKIP_XMLEXIST = 0        # 跳过已有XML文件的模式：0=按现有全匹配策略修改，1=有XML就跳过，2=只处理已有XML的文件（修正模式）

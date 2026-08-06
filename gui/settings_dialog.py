@@ -3,8 +3,32 @@
 """应用设置对话框"""
 
 import config
-from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QFormLayout,
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QPainter
+from PyQt6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFormLayout,
                              QSpinBox, QVBoxLayout)
+
+
+class SwitchButton(QCheckBox):
+    """左右开关（QCheckBox 自绘滑动圆钮，选中靠右，绿色）"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(48, 26)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = self.rect()
+        # 轨道
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#4cd964") if self.isChecked() else QColor("#cccccc"))
+        painter.drawRoundedRect(rect, rect.height() / 2, rect.height() / 2)
+        # 滑动圆钮
+        d = rect.height() - 4
+        x = rect.width() - d - 2 if self.isChecked() else 2
+        painter.setBrush(QColor("white"))
+        painter.drawEllipse(x, 2, d, d)
 
 
 class SettingsDialog(QDialog):
@@ -42,6 +66,10 @@ class SettingsDialog(QDialog):
         self.retries_spin.setValue(config.MAX_RETRIES)
         form_layout.addRow("请求重试次数:", self.retries_spin)
 
+        self.crop_memory_switch = SwitchButton()
+        self.crop_memory_switch.setChecked(config.CROP_MEMORY_ENABLED)
+        form_layout.addRow("封面裁剪定位记忆:", self.crop_memory_switch)
+
         layout.addLayout(form_layout)
 
         button_box = QDialogButtonBox(
@@ -57,4 +85,5 @@ class SettingsDialog(QDialog):
         config.AUTHOR_MATCH_THRESHOLD = self.author_spin.value()
         config.TIMEOUT = self.timeout_spin.value()
         config.MAX_RETRIES = self.retries_spin.value()
+        config.CROP_MEMORY_ENABLED = self.crop_memory_switch.isChecked()
         self.accept()

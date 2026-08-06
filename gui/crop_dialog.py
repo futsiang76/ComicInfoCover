@@ -3,7 +3,8 @@
 """封面裁剪对话框（P3，PyQt6）— 移植 007 ui/crop_selector.py 的交互语义
 
 - 显示原图 + 锁定竖版 870x1230 比例的裁剪框（拖拽移动 + 右下角手柄等比缩放，不能拉成横版）
-- 初始裁剪框居中（007 智能推荐区域 → P4 记忆系统再引入）
+- 初始裁剪框：记忆系统启用且有该比例经验时用推荐位置，否则居中
+- 裁剪确定后记录经验（图片比例 + 裁剪位置）
 - 按钮对齐 007：确定(裁剪)/取消/跳过
 - 画布随窗口 resize：图片等比缩放，裁剪框坐标在 原图坐标 ↔ 显示坐标 之间换算（B1）
 
@@ -14,6 +15,7 @@
 """
 import os
 
+import config
 from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap
 from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton,
@@ -21,6 +23,7 @@ from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton,
 
 from processors.cover_utils import (STANDARD_HEIGHT, STANDARD_WIDTH,
                                     get_zip_first_image, read_zip_entry)
+from processors.crop_memory import CropMemory
 
 HANDLE_SIZE = 14          # 右下角缩放手柄边长
 MIN_CROP_HEIGHT = 40      # 裁剪框最小高度（显示坐标）
@@ -64,12 +67,16 @@ class _CropCanvas(QWidget):
 
     # ---------- 图片装载 ----------
 
-    def set_pixmap(self, pixmap: QPixmap) -> None:
-        """设置原图并初始化居中裁剪框"""
+    def set_pixmap(self, pixmap: QPixmap, recommended_crop: tuple = None) -> None:
+        """设置原图并初始化裁剪框（有记忆推荐时用推荐位置，否则居中）"""
         self._pixmap = pixmap
         self._error = None
         self._layout_image()
-        self._orig_crop = self._initial_crop()
+        if recommended_crop is not None:
+            x, y, w, h = recommended_crop
+            self._orig_crop = QRectF(x, y, w, h)
+        else:
+            self._orig_crop = self._initial_crop()
         self._crop = self._to_display(self._orig_crop)
         self.update()
 
@@ -220,6 +227,12 @@ class _CropCanvas(QWidget):
         h = max(1, int(round(self._orig_crop.height())))
         return (x, y, w, h)
 
+    def pixmap_size(self) -> tuple:
+        """返回原图尺寸 (width, height)，无图时返回 None"""
+        if self._pixmap is None:
+            return None
+        return (self._pixmap.width(), self._pixmap.height())
+
 
 class CropDialog(QDialog):
     """封面裁剪对话框（PyQt6，锁定 870x1230 比例）"""
@@ -229,6 +242,7 @@ class CropDialog(QDialog):
         self.zip_path = zip_path
         self.cover_name = None
         self.crop_region = None  # 确定时设置 (x, y, w, h) 原图坐标
+        self.crop_memory = CropMemory() if config.CROP_MEMORY_ENABLED else None
         self.setWindowTitle("裁剪封面")
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
         self.resize(1000, 780)
@@ -242,7 +256,7 @@ class CropDialog(QDialog):
         layout.addWidget(tip)
 
         self.canvas = _CropCanvas()
-        layout.addWidget(self.canvas)
+        layout.addWidget(self.canvas, 1)
 
         self.path_label = QLabel(os.path.basename(self.zip_path))
         self.path_label.setStyleSheet("color: #999; font-size: 11px; padding: 2px 4px;")
@@ -287,13 +301,31 @@ class CropDialog(QDialog):
             self.ok_btn.setEnabled(False)
             self.canvas.set_error("封面图片加载失败")
             return
-        self.canvas.set_pixmap(pixmap)
+        recommended = self._recommended_crop(pixmap.width(), pixmap.height())
+        self.canvas.set_pixmap(pixmap, recommended)
+
+    def _recommended_crop(self, img_width: int, img_height: int) -> tuple:
+        """记忆系统推荐裁剪区域（原图坐标），未启用或无经验返回 None"""
+        if self.crop_memory is None:
+            return None
+        return self.crop_memory.get_recommended_crop(img_width, img_height, 1.0)
+
+    def _record_experience(self, region: tuple) -> None:
+        """记录裁剪经验（图片比例 + 裁剪位置）"""
+        if self.crop_memory is None:
+            return
+        size = self.canvas.pixmap_size()
+        if size is None or size[0] <= 0 or size[1] <= 0:
+            return
+        self.crop_memory.add_experience(size[0] / size[1], region, size)
+        self.crop_memory.save_memory()  # 记录后立即持久化，跨会话/跨对话框生效
 
     def _on_ok(self) -> None:
         region = self.canvas.crop_region()
         if region[2] <= 0 or region[3] <= 0:
             return
         self.crop_region = region
+        self._record_experience(region)
         self.accept()
 
     def _on_cancel(self) -> None:
