@@ -16,6 +16,49 @@ from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QGroupBox,
 from config import AUTO_TURBO_MATCH, MODE_SKIP_XMLEXIST
 
 
+MODE_CONSTRAINED_SOURCES = ("manhuagui", "ComicVine")
+
+MODE_DESCRIPTIONS = {
+    0: "逐文件夹匹配 Bangumi，匹配失败时弹出选择窗口。速度最慢但结果最准确。",
+    1: "跳过已有 XML 的文件夹，只处理没有 XML 的新文件夹，补齐缺失的 XML 信息。",
+    2: "只处理已有 XML 的文件夹，修正错误数据。不处理没有 XML 的新文件夹。",
+    3: "人工到 Bangumi 查询编号，输入 Bangumi ID 后扫描。适合需要人工确认匹配的系列，可处理多个系列。",
+}
+
+
+def _on_source_changed(mw, text: str) -> None:
+    """数据源下拉框变化：记录选中源并联动模式控件显隐"""
+    mw.selected_source = text
+    apply_source_mode_constraint(mw, text)
+
+
+def apply_source_mode_constraint(mw, source: str) -> None:
+    """数据源联动：manhuagui/ComicVine 固定全匹配模式并隐藏受限控件；Bangumi 恢复
+
+    作为数据源切换与扫描结束解锁的共用入口（scan_controller 恢复时也调用），
+    保证受限源下非全匹配模式控件始终不可见/不可用。
+    """
+    constrained = source in MODE_CONSTRAINED_SOURCES
+    if constrained:
+        mw._mode_radios[0].setChecked(True)  # 固定全匹配模式
+        mw.mode_description_label.setText(MODE_DESCRIPTIONS[0])
+    for val, radio in mw._mode_radios.items():
+        hidden = constrained and val != 0
+        radio.setVisible(not hidden)
+        radio.setEnabled(not hidden)
+    mw.local_only_check.setVisible(not constrained)
+    if constrained:
+        # 无人值守与受限模式互斥，切源时强制复位
+        mw.auto_turbo_check.setChecked(False)
+        mw.auto_turbo_check.hide()
+        mw.auto_turbo_desc.hide()
+    else:
+        # 非受限：无人值守显隐跟随当前模式（对齐 _on_mode_changed）
+        show_auto_turbo = mw.mode_group.checkedId() == 0
+        mw.auto_turbo_check.setVisible(show_auto_turbo)
+        mw.auto_turbo_desc.setVisible(show_auto_turbo)
+
+
 def build_scan_tab(mw, tab_widget):
     """创建扫描标签页"""
     scan_tab = QWidget()
@@ -65,13 +108,6 @@ def build_scan_tab(mw, tab_widget):
         (3, "手动匹配模式"),
     ]
 
-    MODE_DESCRIPTIONS = {
-        0: "逐文件夹匹配 Bangumi，匹配失败时弹出选择窗口。速度最慢但结果最准确。",
-        1: "跳过已有 XML 的文件夹，只处理没有 XML 的新文件夹，补齐缺失的 XML 信息。",
-        2: "只处理已有 XML 的文件夹，修正错误数据。不处理没有 XML 的新文件夹。",
-        3: "人工到 Bangumi 查询编号，输入 Bangumi ID 后扫描。适合需要人工确认匹配的系列，可处理多个系列。",
-    }
-
     mw._mode_radios = {}
     for val, label in mode_options:
         radio = QRadioButton(label)
@@ -99,8 +135,12 @@ def build_scan_tab(mw, tab_widget):
     def _on_mode_changed(btn):
         mode_id = mw.mode_group.id(btn)
         mw.mode_description_label.setText(MODE_DESCRIPTIONS.get(mode_id, ""))
-        # 无人值守区域仅在全匹配模式下可见
-        if mode_id == 0:
+        # 受限源下无人值守始终隐藏；否则仅全匹配模式可见
+        if mw.selected_source in MODE_CONSTRAINED_SOURCES:
+            mw.auto_turbo_check.setChecked(False)
+            mw.auto_turbo_check.hide()
+            mw.auto_turbo_desc.hide()
+        elif mode_id == 0:
             mw.auto_turbo_check.show()
             mw.auto_turbo_desc.show()
         else:
@@ -142,10 +182,12 @@ def build_scan_tab(mw, tab_widget):
     source_layout = QHBoxLayout()
     source_layout.addWidget(QLabel("选择数据源:"))
     mw.source_combo = QComboBox()
+    # 配色对齐「漫画根目录」路径输入框（绿色主题）
+    mw.source_combo.setStyleSheet("border: 2px solid #4CAF50; padding: 4px; font-size: 13px; background-color: #f0fff0;")
     mw.source_combo.addItems(["Bangumi（默认）", "manhuagui", "ComicVine"])
     mw.source_combo.setCurrentIndex(0)
     mw.selected_source = "Bangumi（默认）"
-    mw.source_combo.currentTextChanged.connect(lambda text: setattr(mw, "selected_source", text))
+    mw.source_combo.currentTextChanged.connect(lambda text: _on_source_changed(mw, text))
     source_layout.addWidget(mw.source_combo)
     source_layout.addStretch()
     source_group.setLayout(source_layout)
@@ -293,8 +335,8 @@ def build_scan_tab(mw, tab_widget):
     """)
     scan_layout.addWidget(mw.progress_bar)
 
-    # 工作小猫加载动画：子控件挂进度条，move+raise_ 悬浮覆盖其上方（鼠标穿透）
-    mw.loading_cat_label = QLabel(mw.progress_bar)
+    # 工作小猫加载动画：挂主窗口最上层（顶层浮层，不被进度条容器截断，鼠标穿透）
+    mw.loading_cat_label = QLabel(mw)
     mw.loading_cat_label.setFixedSize(100, 100)
     mw.loading_cat_label.setScaledContents(True)
     mw.loading_cat_label.setAttribute(
@@ -328,6 +370,9 @@ def build_scan_tab(mw, tab_widget):
 
     log_group.setLayout(log_layout)
     layout.addWidget(log_group)
+
+    # 初始数据源为 Bangumi：应用一次约束以同步无人值守显隐（默认全匹配显示）
+    apply_source_mode_constraint(mw, "Bangumi（默认）")
 
     mw.tab_widget.addTab(scan_tab, "📁 扫描")
 

@@ -292,6 +292,10 @@ def update_results_table(mw):
             ),
             0, Qt.AlignmentFlag.AlignHCenter,
         )
+        crop_label = QLabel("裁剪封面")
+        crop_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        crop_label.setStyleSheet("color: #666; font-size: 12px; padding: 2px 0;")
+        cover_block.addWidget(crop_label, 0, Qt.AlignmentFlag.AlignHCenter)
         cover_block.addWidget(expand_btn, 0, Qt.AlignmentFlag.AlignHCenter)
         header_layout.addLayout(cover_block)
 
@@ -344,7 +348,7 @@ def update_results_table(mw):
 
         card_layout.addRow("是否Manga:", QLabel(result.get("manga", "")))
 
-        # 操作按钮 - 突出显示
+        # 操作按钮 - 独立于表单行的整宽布局，addStretch 保证水平居中
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         edit_btn = QPushButton("✏️ 编辑")
@@ -354,9 +358,9 @@ def update_results_table(mw):
         edit_btn.clicked.connect(lambda _, r=row: mw.edit_row(r))
         button_layout.addWidget(edit_btn)
         button_layout.addStretch()
-        card_layout.addRow("", button_layout)
 
         info_layout.addLayout(card_layout)
+        info_layout.addLayout(button_layout)
         header_layout.addLayout(info_layout, 1)
         outer_layout.addLayout(header_layout)
         outer_layout.addWidget(grid_holder)

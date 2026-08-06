@@ -86,11 +86,11 @@ class _CropCanvas(QWidget):
         self.update()
 
     def _layout_image(self) -> None:
-        """按当前画布尺寸等比缩放原图，居中放置（不放大超过原图）"""
+        """按当前画布尺寸等比缩放原图并贴边填充（放大或缩小，等比不变形）"""
         if self._pixmap is None:
             return
         img_w, img_h = self._pixmap.width(), self._pixmap.height()
-        scale = min(self.width() / img_w, self.height() / img_h, 1.0)
+        scale = min(self.width() / img_w, self.height() / img_h)
         disp_w, disp_h = img_w * scale, img_h * scale
         self._disp_rect = QRectF((self.width() - disp_w) / 2,
                                  (self.height() - disp_h) / 2,
@@ -230,6 +230,7 @@ class CropDialog(QDialog):
         self.cover_name = None
         self.crop_region = None  # 确定时设置 (x, y, w, h) 原图坐标
         self.setWindowTitle("裁剪封面")
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
         self.resize(1000, 780)
         self._init_ui()
         self._load_cover()

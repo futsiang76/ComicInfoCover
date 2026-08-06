@@ -35,9 +35,10 @@ def start_loading_cat(mw) -> None:
     movie = getattr(mw, "loading_cat_movie", None)
     if label is None or movie is None:
         return
-    label.move(8, -75)  # 子控件坐标系：100px 高时底部对齐进度条底，上方留 75px
+    # 挂主窗口：直接定位窗体左上角，悬浮于所有内容之上
+    label.move(8, 8)
     label.show()
-    label.raise_()  # 浮到进度条之上不被遮挡
+    label.raise_()  # 浮到主窗口内容之上不被遮挡
     if movie.state() != QMovie.MovieState.Running:
         movie.start()
     QApplication.processEvents()

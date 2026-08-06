@@ -12,7 +12,27 @@ from PyQt6.QtWidgets import QMessageBox
 
 from .scan_thread import ScanThread
 from .edit_dialog import EditDialog
+from .scan_tab import apply_source_mode_constraint
 from .utils import start_loading_cat, stop_loading_cat
+
+
+def _lock_controls(mw) -> None:
+    """扫描期间锁定扫描模式与数据源选择，防止中途切换"""
+    mode_group = getattr(mw, "mode_group", None)
+    if mode_group is not None:
+        for btn in mode_group.buttons():
+            btn.setEnabled(False)
+    source_combo = getattr(mw, "source_combo", None)
+    if source_combo is not None:
+        source_combo.setEnabled(False)
+
+
+def _unlock_controls(mw) -> None:
+    """扫描结束/出错后恢复模式与数据源选择（受限源下仍保持其模式约束）"""
+    apply_source_mode_constraint(mw, getattr(mw, "selected_source", "Bangumi（默认）"))
+    source_combo = getattr(mw, "source_combo", None)
+    if source_combo is not None:
+        source_combo.setEnabled(True)
 
 
 def start_scan(mw):
@@ -88,6 +108,7 @@ def start_scan(mw):
 
         start_loading_cat(mw)  # 全匹配扫描等待期显示工作小猫动画
 
+        _lock_controls(mw)
         thread.start()
         return
 
@@ -103,6 +124,7 @@ def start_scan(mw):
 
     start_loading_cat(mw)  # 批量扫描等待期显示工作小猫动画
 
+    _lock_controls(mw)
     mw.scan_thread.start()
 
 
@@ -177,6 +199,7 @@ def _start_manhuagui_scan(mw, manga_root: str) -> None:
 
     start_loading_cat(mw)  # manhuagui 扫描等待期显示工作小猫动画
 
+    _lock_controls(mw)
     thread.start()
 
 
@@ -227,6 +250,7 @@ def _start_comicvine_scan(mw, manga_root: str) -> None:
 
     start_loading_cat(mw)  # ComicVine 扫描等待期显示工作小猫动画
 
+    _lock_controls(mw)
     thread.start()
 
 
@@ -293,6 +317,7 @@ def _start_manual_match_scan(mw, manga_root: str, manga_value: Optional[str]) ->
 
     start_loading_cat(mw)  # 手动匹配扫描等待期显示工作小猫动画
 
+    _lock_controls(mw)
     thread.start()
 
 
@@ -439,6 +464,7 @@ def _on_full_match_completed(mw, results: List[Dict], mode: int = 0) -> None:
     mode 标识来源模式，用于 _finish_scan 路由（008 封面流程挂载点）。
     """
     stop_loading_cat(mw)
+    _unlock_controls(mw)
     mw.update_results_table()
     mw.scan_btn.setEnabled(True)
     mw.stop_btn.setEnabled(False)
@@ -452,6 +478,7 @@ def on_scan_completed(mw, results: List[Dict]):
     from PyQt6.QtWidgets import QDialog
 
     stop_loading_cat(mw)
+    _unlock_controls(mw)
     mw.scan_results = results
     mw.progress_bar.setRange(0, 1)
     mw.progress_bar.setValue(1)
@@ -510,6 +537,7 @@ def on_scan_completed(mw, results: List[Dict]):
 def on_error_occurred(mw, error: str):
     """发生错误"""
     stop_loading_cat(mw)
+    _unlock_controls(mw)
     mw.log_text.append(f"\n❌ {error}")
     mw.progress_bar.setRange(0, 1)
     mw.progress_bar.setValue(0)
