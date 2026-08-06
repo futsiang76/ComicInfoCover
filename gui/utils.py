@@ -4,6 +4,7 @@
 共享工具函数
 """
 
+from PyQt6.QtCore import QPoint
 from PyQt6.QtGui import QMovie
 from PyQt6.QtWidgets import QApplication
 
@@ -35,8 +36,12 @@ def start_loading_cat(mw) -> None:
     movie = getattr(mw, "loading_cat_movie", None)
     if label is None or movie is None:
         return
-    # 挂主窗口：直接定位窗体左上角，悬浮于所有内容之上
-    label.move(8, 8)
+    # 挂主窗口：左下角对齐下方进度条左下角，悬浮于所有内容之上
+    progress = getattr(mw, "progress_bar", None)
+    if progress is not None:
+        # 进度条相对主窗口的左上角 + 自身高度 → 左下角；label 底部与之平齐
+        progress_pos = progress.mapTo(mw, QPoint(0, 0))
+        label.move(progress_pos.x(), progress_pos.y() + progress.height() - label.height())
     label.show()
     label.raise_()  # 浮到主窗口内容之上不被遮挡
     if movie.state() != QMovie.MovieState.Running:

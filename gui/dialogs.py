@@ -9,6 +9,24 @@ from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton,
                              QVBoxLayout)
 
 
+def _format_sample_files_html(sample_files: list, total: int) -> str:
+    """格式化「已有XML文件示例」区块 HTML
+
+    最多列前 10 个，超过 10 个时在第 10 个后追加省略号行并带总数，
+    避免弹窗文件列表过长。
+    """
+    html = """
+    <div style="background-color: #fff3e0; padding: 10px; border-radius: 5px; margin: 10px;">
+        <b>📁 已有XML的文件示例：</b><br>
+    """
+    for file_path in sample_files[:10]:
+        html += f"• {file_path}<br>"
+    if len(sample_files) > 10:
+        html += f"• ... 共 {total} 个<br>"
+    html += "</div>"
+    return html
+
+
 def show_xml_exists_dialog(mw, stats: dict) -> str:
     """显示XML文件存在对话框，返回用户选择"""
     folder_name = stats.get("folder_name", "") or stats.get("series", "")
@@ -44,16 +62,11 @@ def show_xml_exists_dialog(mw, stats: dict) -> str:
     </div>
     """
     
-    # 如果有示例文件，显示出来
+    # 如果有示例文件，显示出来（最多列前 10 个，超出省略号带总数）
     sample_files = stats.get('sample_files', [])
     if sample_files:
-        stats_text += f"""
-        <div style="background-color: #fff3e0; padding: 10px; border-radius: 5px; margin: 10px;">
-            <b>📁 已有XML的文件示例：</b><br>
-        """
-        for i, file_path in enumerate(sample_files, 1):
-            stats_text += f"• {file_path}<br>"
-        stats_text += "</div>"
+        stats_text += _format_sample_files_html(
+            sample_files, stats.get('files_with_xml', len(sample_files)))
     
     stats_label = QLabel(stats_text)
     stats_label.setStyleSheet("font-size: 13px; padding: 5px;")
