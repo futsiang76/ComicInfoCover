@@ -193,13 +193,19 @@ def _volume_card(filename: str, info: dict, on_click=None) -> QWidget:
     layout = QVBoxLayout(card)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(2)
-    layout.addWidget(_cover_with_badge(info, info.get("ratio_ok") is False, on_click))
+    inner = QVBoxLayout()  # 封面+标题的居中容器
+    inner.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+    inner.addWidget(
+        _cover_with_badge(info, info.get("ratio_ok") is False, on_click),
+        0, Qt.AlignmentFlag.AlignHCenter,
+    )
     name_label = QLabel(os.path.basename(filename))
     name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     name_label.setWordWrap(True)
     name_label.setMaximumWidth(THUMB_WIDTH)
     name_label.setStyleSheet("color: #555; font-size: 11px;")
-    layout.addWidget(name_label)
+    inner.addWidget(name_label, 0, Qt.AlignmentFlag.AlignHCenter)
+    layout.addLayout(inner)
     return card
 
 
