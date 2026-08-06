@@ -58,7 +58,8 @@ def _format_result_display(result: Dict) -> str:
     """格式化结果列表显示文本
 
     ComicVine 结果（含 resource_type）标注 系列/卷 + 年份/期数辅助辨认；
-    bangumi/manhuagui（无 resource_type）保持原格式「中文名（原名）」。
+    bangumi/manhuagui 结果带 platform 时标注平台类型：series=True → （漫画系列）/
+    （小说系列），series=False → （漫画）/（小说）；platform 缺失保持原格式。
     """
     sid = result.get('id', '?')
     title_cn = result.get('name_cn') or result.get('name', '未知')
@@ -69,6 +70,13 @@ def _format_result_display(result: Dict) -> str:
         extra += (f" {result['count_of_issues']}期" if result.get('count_of_issues') else "")
         label = '系列' if rtype == 'series' else '卷'
         return f"[{sid}] 📚 {title_cn}（{label}）{extra}".rstrip()
+    # bangumi/manhuagui：platform 存在时标注平台类型（系列条目加「系列」二字）
+    platform = result.get('platform')
+    if platform:
+        platform_label = f"{platform}系列" if result.get('series') is True else platform
+        if title_ori and title_ori != title_cn:
+            return f"[{sid}] {title_cn}  ({title_ori})（{platform_label}）"
+        return f"[{sid}] {title_cn}（{platform_label}）"
     if title_ori and title_ori != title_cn:
         return f"[{sid}] {title_cn}  ({title_ori})"
     return f"[{sid}] {title_cn}"
