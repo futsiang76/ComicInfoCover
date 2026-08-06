@@ -202,6 +202,31 @@ def analyze_bangumi_author_types( detail: Dict) -> Dict[str, List[str]]:
     return author_info
 
 
+def filter_results_by_author(search_results: List[Dict], folder_author: str,
+                             extract_authors, threshold: int = AUTHOR_MATCH_THRESHOLD) -> List[Dict]:
+    """过滤搜索结果：逐个提取作者并与文件夹作者比对，返回作者匹配项
+
+    公共过滤层，Bangumi 与 manhuagui 复用：调用方传入 extract_authors(result)
+    提取单个结果的作者列表——Bangumi 经详情接口提取，manhuagui 直接从搜索项的
+    author 字段提取。无作者的结果不参与比对，直接过滤。
+
+    Args:
+        search_results: 搜索结果列表
+        folder_author: 文件夹作者名
+        extract_authors: 可调用对象，输入单个结果 dict，返回作者名列表
+        threshold: 作者匹配阈值
+
+    Returns:
+        List[Dict]: 作者匹配的搜索结果
+    """
+    matching_results = []
+    for result in search_results:
+        authors = extract_authors(result)
+        if authors and match_author(folder_author, authors):
+            matching_results.append(result)
+    return matching_results
+
+
 def match_author( folder_author: str, bangumi_authors: List[str]) -> bool:
     """验证作者名是否匹配（任一作者≥阈值即匹配）"""
     if not bangumi_authors:

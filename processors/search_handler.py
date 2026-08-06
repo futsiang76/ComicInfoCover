@@ -84,6 +84,13 @@ class SearchHandler:
         
         return search_results
     
+    def _extract_result_authors(self, result: Dict) -> List[str]:
+        """从单个搜索结果提取 Bangumi 作者（经详情接口；详情缺失返回空列表）"""
+        detail = self.fetcher.get_manga_detail(result["id"])
+        if not detail:
+            return []
+        return self.fetcher.extract_bangumi_authors(detail)
+
     def filter_matching_results(self, search_results: List[Dict], folder_info: Dict, 
                                author_match_threshold: float) -> List[Dict]:
         """过滤匹配的搜索结果
@@ -96,46 +103,25 @@ class SearchHandler:
         Returns:
             List[Dict]: 匹配的搜索结果列表
         """
-        matching_results = []
-        
-        for result in search_results:
-            # 获取Bangumi作者信息
-            detail = self.fetcher.get_manga_detail(result["id"])
-            if not detail:
-                continue
-                
-            bangumi_authors = self.fetcher.extract_bangumi_authors(detail)
-            
-            # 检查作者匹配
-            if self.fetcher.match_author(folder_info["author"], bangumi_authors):
-                matching_results.append(result)
-        
-        return matching_results
-    
+        from models.author_utils import filter_results_by_author
+        return filter_results_by_author(
+            search_results, folder_info["author"], self._extract_result_authors,
+            threshold=author_match_threshold)
+
     def has_author_match(self, search_results: List[Dict], folder_info: Dict) -> bool:
         """检查搜索结果中是否有作者匹配
-        
+
         Args:
             search_results: 搜索结果列表
             folder_info: 文件夹信息字典
-            
+
         Returns:
             bool: 是否有作者匹配
         """
-        for result in search_results:
-            # 获取Bangumi作者信息
-            detail = self.fetcher.get_manga_detail(result["id"])
-            if not detail:
-                continue
-                
-            bangumi_authors = self.fetcher.extract_bangumi_authors(detail)
-            
-            # 检查作者匹配
-            if self.fetcher.match_author(folder_info["author"], bangumi_authors):
-                return True
-        
-        return False
-    
+        from models.author_utils import filter_results_by_author
+        return bool(filter_results_by_author(
+            search_results, folder_info["author"], self._extract_result_authors))
+
     def search_by_id(self, subject_id: int) -> Optional[Dict]:
         """按Bangumi ID搜索
         

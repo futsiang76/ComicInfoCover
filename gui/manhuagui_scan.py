@@ -11,10 +11,29 @@ manhuagui 源只支持单系列，多系列目录已在 scan_controller 中拦�
 结果构建），线程化/信号/弹窗桥接/逐系列保存全部由 BaseScanThread 提供。
 """
 
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from .base_scan_thread import BaseScanThread, _ThreadMwProxy
 from .gui_dialogs import show_no_result_dialog, show_result_selection_dialog
+
+
+def _split_result_authors(result: Dict) -> List[str]:
+    """从 manhuagui 搜索结果提取作者列表（author 字段，兼容 ×/&/ 等分隔符）"""
+    from models.author_utils import _split_authors
+    return _split_authors(result.get("author", ""))
+
+
+def _filter_results_by_author(search_results: List[Dict], folder_info: Dict) -> List[Dict]:
+    """逐个比对搜索结果作者与文件夹作者，返回作者匹配项（复用三源公共过滤层）"""
+    from models.author_utils import filter_results_by_author
+    return filter_results_by_author(
+        search_results, folder_info.get("author", ""), _split_result_authors)
+
+
+def _is_author_keyword(keyword: str, folder_author: str) -> bool:
+    """判断关键词是否为作者名（作者是身份不是搜索词，不作为搜索关键词）"""
+    author = (folder_author or "").strip().lower()
+    return bool(author) and keyword.strip().lower() == author
 
 
 def _build_from_bangumi_id(mw, value: str, folder_info: Dict, template_handler) -> Tuple[Dict, Optional[Dict]]:
@@ -66,19 +85,25 @@ def _search_and_select_manhuagui(mw, folder_path: str, folder_info: Dict, fetche
 
     # 1. 提取搜索关键词（主词 + 别名，复用 Bangumi 的方法；仅用 folder_info，fetcher 传 None）
     _, alt_keywords = SearchHandler(None).extract_search_keywords(folder_path, folder_info)
+    folder_author = folder_info.get("author", "")
 
-    # 2. manhuagui 主词搜索（结果已转为选择对话框兼容格式）
+    # 2. manhuagui 主词搜索（结果已转为选择对话框兼容格式），逐个比对作者
     search_results = route_search(folder_info["series"], folder_info, source="manhuagui")
+    matching_results = _filter_results_by_author(search_results, folder_info)
 
-    # 3. 主词无结果 → 用别名补搜（与 Bangumi 路径一致）
-    if not search_results:
+    # 3. 主词无作者匹配 → 用别名补搜（排除作者名：作者是身份不是搜索词）
+    if not matching_results:
         for alt in alt_keywords:
-            search_results = route_search(alt, folder_info, source="manhuagui")
-            if search_results:
-                mw.log_text.append(f"💡 用别名「{alt}」搜到 {len(search_results)} 个结果")
+            if _is_author_keyword(alt, folder_author):
+                continue
+            alt_results = route_search(alt, folder_info, source="manhuagui")
+            alt_matching = _filter_results_by_author(alt_results, folder_info)
+            if alt_matching:
+                mw.log_text.append(f"💡 用别名「{alt}」搜到 {len(alt_matching)} 个结果")
+                matching_results = alt_matching
                 break
 
-    if not search_results:
+    if not matching_results:
         mw.log_text.append("❌ manhuagui 未找到搜索结果")
         if gui_callback is not None:
             action = gui_callback('search_failure', folder_info=folder_info, allow_id_search=False)
@@ -97,10 +122,10 @@ def _search_and_select_manhuagui(mw, folder_path: str, folder_info: Dict, fetche
 
     # 4. 结果选择弹窗（复用 Bangumi 多结果对话框，id 为 manhuagui 漫画ID）
     if gui_callback is not None:
-        selected = gui_callback('select_result', search_results=search_results,
+        selected = gui_callback('select_result', search_results=matching_results,
                                 folder_info=folder_info, allow_id_search=False)
     else:
-        selected = show_result_selection_dialog(mw, search_results, folder_info,
+        selected = show_result_selection_dialog(mw, matching_results, folder_info,
                                                 allow_id_search=False)
     if selected is None:
         mw.log_text.append("⏭️ 跳过此系列")

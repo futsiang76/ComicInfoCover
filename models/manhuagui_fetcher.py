@@ -12,6 +12,8 @@ import re
 from typing import Dict, List, Optional
 from urllib.parse import quote
 
+from zhconv import convert
+
 
 class ManhuaguiFetcher:
     """manhuagui 漫画数据抓取器（Playwright 无头浏览器，绕过反爬）
@@ -67,7 +69,8 @@ class ManhuaguiFetcher:
         """
         try:
             self._ensure_browser()
-            url = f"{self.base_url}/s/{quote(keyword)}.html"
+            keyword_cn = convert(keyword, "zh-cn")  # 繁转简，对齐 Bangumi 搜索
+            url = f"{self.base_url}/s/{quote(keyword_cn)}.html"
             self._page.goto(url, wait_until="domcontentloaded", timeout=self.NAV_TIMEOUT)
             # 等待结果列表出现；搜索无结果时页面不含 li.cf，也会超时后走 except 返回 []
             self._page.wait_for_selector("li.cf", timeout=self.WAIT_TIMEOUT)

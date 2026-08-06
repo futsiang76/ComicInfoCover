@@ -16,6 +16,7 @@ API 文档: https://comicvine.gamespot.com/api/documentation
 缺失数据安全降级——Writer/Penciller/Colorist 留空，由 XML 模板用文件夹作者兜底。
 """
 
+import unicodedata
 from typing import Dict, List, Optional
 from urllib.parse import quote
 
@@ -37,6 +38,15 @@ ROLE_FIELD_MAP = {
     "penciller": "Penciller",
     "colorist": "Colorist",
 }
+
+
+def _normalize_for_match(text: str) -> str:
+    """变音符号归一：NFD 分解后移除组合字符（Mn 类），José→Jose
+
+    只用于比对归一（搜索排序/匹配），不改变原始数据。
+    """
+    decomposed = unicodedata.normalize("NFD", text or "")
+    return "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn").lower()
 
 
 class ComicVineFetcher:
@@ -82,9 +92,11 @@ class ComicVineFetcher:
                 item["resource_type"] = resource
                 results.append(item)
         # 按关键词模糊匹配度降序排序（fuzz.ratio，精确匹配排最前，部分匹配排后）。
+        # 比对前做变音符号归一（José→Jose），只影响排序不改变原始数据。
         # 只排序不过滤——保留全部结果供用户选择；同匹配度保持原顺序（series 在前）。
+        keyword_norm = _normalize_for_match(keyword)
         results.sort(
-            key=lambda item: fuzz.ratio(keyword.lower(), (item.get("name") or "").lower()),
+            key=lambda item: fuzz.ratio(keyword_norm, _normalize_for_match(item.get("name") or "")),
             reverse=True,
         )
         return results

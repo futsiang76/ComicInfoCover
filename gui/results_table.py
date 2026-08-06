@@ -208,6 +208,7 @@ class _VolumeGrid(QWidget):
         self._grid_layout = QGridLayout(self)
         self._grid_layout.setContentsMargins(0, 8, 0, 0)
         self._grid_layout.setSpacing(GRID_SPACING)
+        self._grid_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)  # 展开网格整体居中
         self._relayout(grid_columns(self.width()))
 
     def _relayout(self, cols: int) -> None:
@@ -284,6 +285,7 @@ def update_results_table(mw):
             _toggle_volume_grid(r, g, b, lambda f: _make_crop_handler(r, f))
         )
         cover_block = QVBoxLayout()
+        cover_block.setSpacing(0)  # 「裁剪封面」紧贴展开/收起按钮上方
         cover_block.addWidget(
             _cover_with_badge(
                 first_info,
@@ -294,7 +296,7 @@ def update_results_table(mw):
         )
         crop_label = QLabel("裁剪封面")
         crop_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        crop_label.setStyleSheet("color: #666; font-size: 12px; padding: 2px 0;")
+        crop_label.setStyleSheet("color: #666; font-size: 12px;")
         cover_block.addWidget(crop_label, 0, Qt.AlignmentFlag.AlignHCenter)
         cover_block.addWidget(expand_btn, 0, Qt.AlignmentFlag.AlignHCenter)
         header_layout.addLayout(cover_block)
