@@ -330,7 +330,8 @@ def check_xml_before_scan(mw, manga_root: str) -> tuple:
             "total_files": 0,
             "files_with_xml": 0,
             "files_without_xml": 0,
-            "sample_files": []  # 存储一些有XML的文件示例
+            "sample_files": [],  # 前10个有XML的文件示例
+            "no_xml_files": []   # 前10个无XML的文件示例
         }
         
         for root, dirs, files in os.walk(manga_root):
@@ -341,17 +342,20 @@ def check_xml_before_scan(mw, manga_root: str) -> tuple:
                     try:
                         # 检查ZIP文件中是否包含ComicInfo.xml
                         has_xml, _, _ = check_zip_xml_files(file_path, "")
-                        if has_xml:
-                            stats["files_with_xml"] += 1
-                            # 保存前5个有XML的文件作为示例
-                            if len(stats["sample_files"]) < 5:
-                                relative_path = os.path.relpath(file_path, manga_root)
-                                stats["sample_files"].append(relative_path)
-                        else:
-                            stats["files_without_xml"] += 1
                     except Exception:
+                        # 无法读取的归档视为无XML
+                        has_xml = False
+                    relative_path = os.path.relpath(file_path, manga_root)
+                    if has_xml:
+                        stats["files_with_xml"] += 1
+                        # 保存前10个有XML的文件作为示例
+                        if len(stats["sample_files"]) < 10:
+                            stats["sample_files"].append(relative_path)
+                    else:
                         stats["files_without_xml"] += 1
-                        continue
+                        # 保存前10个无XML的文件作为示例
+                        if len(stats["no_xml_files"]) < 10:
+                            stats["no_xml_files"].append(relative_path)
         
         has_xml = stats["files_with_xml"] > 0
         return has_xml, stats

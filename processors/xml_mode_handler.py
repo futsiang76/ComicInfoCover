@@ -65,7 +65,7 @@ class XmlModeHandler:
                     with zipfile.ZipFile(file_path, "r") as zf:
                         if "ComicInfo.xml" in zf.namelist():
                             stats["files_with_xml"].append(filename)
-                            if len(stats["sample_files"]) < 5:
+                            if len(stats["sample_files"]) < 10:
                                 stats["sample_files"].append(filename)
                         else:
                             stats["files_without_xml"].append(filename)

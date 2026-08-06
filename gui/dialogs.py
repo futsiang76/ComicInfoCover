@@ -9,21 +9,85 @@ from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton,
                              QVBoxLayout)
 
 
-def _format_sample_files_html(sample_files: list, total: int) -> str:
-    """格式化「已有XML文件示例」区块 HTML
+def _extract_file_list(stats: dict, count_key: str, *list_keys: str) -> tuple:
+    """从 stats 提取文件列表与总数，兼容 int 计数 / list 列表两种结构
+
+    Args:
+        stats: 扫描统计信息
+        count_key: 数量字段名（scan_controller 存 int；xml_mode_handler 存 list）
+        *list_keys: 候选文件列表字段名，按顺序取第一个 list
+
+    Returns:
+        (文件列表, 总数)：列表用于弹窗展示，总数用于统计区与省略号
+    """
+    files = []
+    for key in list_keys:
+        value = stats.get(key)
+        if isinstance(value, list):
+            files = value
+            break
+    count_value = stats.get(count_key)
+    if isinstance(count_value, list):
+        total = len(count_value)
+    elif isinstance(count_value, int):
+        total = count_value
+    else:
+        total = len(files)
+    return files, total
+
+
+def _format_file_list_html(title: str, file_list: list, total: int,
+                           bg_color: str = "#fff3e0") -> str:
+    """格式化文件列表区块 HTML
 
     最多列前 10 个，超过 10 个时在第 10 个后追加省略号行并带总数，
     避免弹窗文件列表过长。
+
+    Args:
+        title: 区块标题（如「📁 已有XML的文件示例」）
+        file_list: 文件名列表
+        total: 文件总数（可能大于 len(file_list)）
+        bg_color: 区块背景色
     """
-    html = """
-    <div style="background-color: #fff3e0; padding: 10px; border-radius: 5px; margin: 10px;">
-        <b>📁 已有XML的文件示例：</b><br>
+    html = f"""
+    <div style="background-color: {bg_color}; padding: 10px; border-radius: 5px; margin: 10px;">
+        <b>{title}</b><br>
     """
-    for file_path in sample_files[:10]:
+    for file_path in file_list[:10]:
         html += f"• {file_path}<br>"
-    if len(sample_files) > 10:
+    if total > 10:
         html += f"• ... 共 {total} 个<br>"
     html += "</div>"
+    return html
+
+
+def _build_xml_stats_html(stats: dict) -> str:
+    """构建弹窗统计区 + 两个文件列表区块的 HTML
+
+    兼容两种 stats 结构：
+    - int 版（scan_controller）：files_with_xml/files_without_xml 为计数，
+      sample_files/no_xml_files 为前 10 示例列表
+    - list 版（xml_mode_handler）：files_with_xml/files_without_xml 为完整列表，
+      sample_files 为前 10 示例列表
+    """
+    with_xml_files, with_xml_total = _extract_file_list(
+        stats, 'files_with_xml', 'sample_files', 'files_with_xml')
+    without_xml_files, without_xml_total = _extract_file_list(
+        stats, 'files_without_xml', 'files_without_xml', 'no_xml_files')
+    html = f"""
+    <div style="background-color: #e3f2fd; padding: 10px; border-radius: 5px; margin: 10px;">
+        <b>📊 检测统计：</b><br>
+        • 总文件数：{stats.get('total_files', 0)} 个<br>
+        • 已有XML：{with_xml_total} 个 ✅<br>
+        • 无XML文件：{without_xml_total} 个 ❌
+    </div>
+    """
+    if with_xml_files:
+        html += _format_file_list_html(
+            "📁 已有XML的文件示例：", with_xml_files, with_xml_total)
+    if without_xml_files:
+        html += _format_file_list_html(
+            "📂 没有XML的文件：", without_xml_files, without_xml_total, "#e0f7fa")
     return html
 
 
@@ -52,22 +116,8 @@ def show_xml_exists_dialog(mw, stats: dict) -> str:
     info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     layout.addWidget(info_label)
     
-    # 统计信息
-    stats_text = f"""
-    <div style="background-color: #e3f2fd; padding: 10px; border-radius: 5px; margin: 10px;">
-        <b>📊 检测统计：</b><br>
-        • 总文件数：{stats.get('total_files', 0)} 个<br>
-        • 已有XML：{stats.get('files_with_xml', 0)} 个 ✅<br>
-        • 无XML文件：{stats.get('files_without_xml', 0)} 个 ❌
-    </div>
-    """
-    
-    # 如果有示例文件，显示出来（最多列前 10 个，超出省略号带总数）
-    sample_files = stats.get('sample_files', [])
-    if sample_files:
-        stats_text += _format_sample_files_html(
-            sample_files, stats.get('files_with_xml', len(sample_files)))
-    
+    # 统计信息 + 两个文件列表（统计区 → 已有XML示例 → 没有XML列表）
+    stats_text = _build_xml_stats_html(stats)
     stats_label = QLabel(stats_text)
     stats_label.setStyleSheet("font-size: 13px; padding: 5px;")
     stats_label.setWordWrap(True)
