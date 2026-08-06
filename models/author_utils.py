@@ -63,6 +63,7 @@ def _split_authors( author_string: str) -> List[str]:
         '/',       # 斜杠
         '\\',      # 反斜杠
         '・',      # 全角中点（日文）
+        '+',       # 加号
     ]
     
     # 使用正则表达式分割
@@ -232,16 +233,8 @@ def match_author( folder_author: str, bangumi_authors: List[str]) -> bool:
     if not bangumi_authors:
         return False
     
-    # 处理文件夹中的多个作者（用×或&或/分隔）
-    folder_authors = []
-    if "×" in folder_author:
-        folder_authors = [author.strip() for author in folder_author.split("×")]
-    elif "&" in folder_author:
-        folder_authors = [author.strip() for author in folder_author.split("&")]
-    elif "/" in folder_author:
-        folder_authors = [author.strip() for author in folder_author.split("/")]
-    else:
-        folder_authors = [folder_author.strip()]
+    # 处理文件夹中的多个作者（统一使用 _split_authors 的分隔符集合）
+    folder_authors = _split_authors(folder_author)
     
     # 转换文件夹作者名为中文
     folder_authors_cn = [convert(author, "zh-cn") for author in folder_authors]
