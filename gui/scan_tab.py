@@ -6,7 +6,7 @@
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtCore import QSettings, QSize, Qt
 from PyQt6.QtGui import QFont, QMovie
 from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QGroupBox,
                              QHBoxLayout, QLabel, QLineEdit, QProgressBar,
@@ -336,13 +336,17 @@ def build_scan_tab(mw, tab_widget):
     scan_layout.addWidget(mw.progress_bar)
 
     # 工作小猫加载动画：挂主窗口最上层（顶层浮层，不被进度条容器截断，鼠标穿透）
+    mw.loading_cat_movie = QMovie(  # 引用挂 mw 防 GC
+        str(Path(__file__).resolve().parent.parent / "assets" / "loading_cat.gif"))
+    mw.loading_cat_movie.jumpToFrame(0)  # 解析首帧拿到真实尺寸（frameRect 构造后为空）
+    cat_size = mw.loading_cat_movie.frameRect().size()
+    if cat_size.isEmpty():  # 兜底：GIF 异常时退回原始像素，避免 0x0 不可见
+        cat_size = QSize(282, 282)
     mw.loading_cat_label = QLabel(mw)
-    mw.loading_cat_label.setFixedSize(200, 200)
+    mw.loading_cat_label.setFixedSize(cat_size)
     mw.loading_cat_label.setScaledContents(True)
     mw.loading_cat_label.setAttribute(
         Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-    mw.loading_cat_movie = QMovie(  # 引用挂 mw 防 GC
-        str(Path(__file__).resolve().parent.parent / "assets" / "loading_cat.gif"))
     mw.loading_cat_label.setMovie(mw.loading_cat_movie)
     mw.loading_cat_label.hide()
 
