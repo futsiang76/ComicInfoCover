@@ -6,15 +6,20 @@
     - config/config_manager.py：标准封面 870x1230（宽高比 0.707），±10% 容差
     - image_handler/cover_detector.py：文件名分段排序规则（取排序最小者为首卷封面）
 
-图片尺寸直接从文件头解析（PNG/JPEG/GIF/BMP），不依赖 PIL。
+图片尺寸解析优先 PIL（对齐 007，Image.open 支持 webp/jpg/png/bmp 等），
+PIL 失败时回退手写文件头解析（PNG/JPEG/GIF/BMP）。webp 等需完整数据才能
+解码的格式，由 get_zip_cover_info 读全图字节兜底。
 """
 import os
 import re
 import struct
 import zipfile
 from functools import cmp_to_key
+from io import BytesIO
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+from PIL import Image
 
 # 支持的图片扩展名（与 007 supported_image_extensions 一致）
 SUPPORTED_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
@@ -99,7 +104,16 @@ def sort_volume_files(filenames: List[str]) -> List[str]:
 
 
 def _image_dimensions(data: bytes) -> Optional[Tuple[int, int]]:
-    """从图片文件头解析宽高，不依赖 PIL（返回 (width, height) 或 None）"""
+    """解析图片尺寸：优先 PIL（对齐 007，支持 webp/jpg/png/bmp），失败回退手写解析"""
+    try:
+        with Image.open(BytesIO(data)) as img:
+            return img.size
+    except Exception:
+        return _image_dimensions_manual(data)
+
+
+def _image_dimensions_manual(data: bytes) -> Optional[Tuple[int, int]]:
+    """从图片文件头手写解析宽高（PIL 失败时的回退，返回 (width, height) 或 None）"""
     if len(data) < 26:
         return None
     if data[:8] == b"\x89PNG\r\n\x1a\n":
@@ -113,7 +127,7 @@ def _image_dimensions(data: bytes) -> Optional[Tuple[int, int]]:
         return abs(width), abs(height)
     if data[:2] == b"\xff\xd8":
         return _jpeg_dimensions(data)
-    return None  # WebP 等未支持格式，交由 UI 占位图兜底
+    return None  # 无法识别的格式，交由 UI 占位图兜底
 
 
 def _jpeg_dimensions(data: bytes) -> Optional[Tuple[int, int]]:
@@ -168,6 +182,21 @@ def _read_prefix(zf: zipfile.ZipFile, name: str, size: int = _PREFIX_BYTES) -> b
         return f.read(size)
 
 
+def _cover_dimensions(zf: zipfile.ZipFile, name: str) -> Optional[Tuple[int, int]]:
+    """解析 zip 内图片尺寸：先读前缀快路径，PIL 无法识别时读全图兜底
+
+    WebP 等格式的尺寸需完整数据才能解码（PIL 解码前缀会失败），
+    此时若文件不超 MAX_COVER_BYTES 则读全图再解析。
+    """
+    dims = _image_dimensions(_read_prefix(zf, name))
+    if dims is not None:
+        return dims
+    info = zf.getinfo(name)
+    if info.file_size > MAX_COVER_BYTES:
+        return None
+    return _image_dimensions(zf.read(name))
+
+
 def get_zip_first_image(zip_path: str) -> Optional[str]:
     """返回 zip 内排序最小的图片条目名（当前封面），供 P3 裁剪定位原图"""
     try:
@@ -199,8 +228,7 @@ def get_zip_cover_info(zip_path: str) -> Optional[Dict]:
             name = _first_image_name(zf)
             if name is None:
                 return None
-            prefix = _read_prefix(zf, name)
-            dims = _image_dimensions(prefix)
+            dims = _cover_dimensions(zf, name)
             if dims is None:
                 return None
             width, height = dims
