@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import QMessageBox
 from .scan_thread import ScanThread
 from .edit_dialog import EditDialog
 from .gui_dialogs import DialogBridge, show_bangumi_id_not_found
+from .utils import start_loading_cat, stop_loading_cat
 
 
 def start_scan(mw):
@@ -84,6 +85,8 @@ def start_scan(mw):
         mw.scan_btn.setEnabled(False)
         mw.stop_btn.setEnabled(True)
         mw.progress_bar.setRange(0, 0)  # 不确定进度（后台线程开始时由信号校正）
+
+        start_loading_cat(mw)  # 全匹配扫描等待期显示工作小猫动画
 
         thread.start()
         return
@@ -420,6 +423,7 @@ def _on_full_match_completed(mw, results: List[Dict]) -> None:
     结果已由 series_saved 逐系列保存并写盘，此处仅兜底刷新结果表，
     不重复 save_changes。results 参数保留以兼容既有调用方。
     """
+    stop_loading_cat(mw)
     mw.update_results_table()
     mw.scan_btn.setEnabled(True)
     mw.stop_btn.setEnabled(False)
@@ -489,6 +493,7 @@ def on_scan_completed(mw, results: List[Dict]):
 
 def on_error_occurred(mw, error: str):
     """发生错误"""
+    stop_loading_cat(mw)
     mw.log_text.append(f"\n❌ {error}")
     mw.progress_bar.setRange(0, 1)
     mw.progress_bar.setValue(0)

@@ -4,6 +4,9 @@
 共享工具函数
 """
 
+from PyQt6.QtGui import QMovie
+from PyQt6.QtWidgets import QApplication
+
 
 def _trim_compare_dicts(old_dict: dict, new_dict: dict) -> bool:
     """递归比较两个字典，对所有字符串值做strip后比较，返回True表示有差异"""
@@ -20,3 +23,31 @@ def _trim_compare_dicts(old_dict: dict, new_dict: dict) -> bool:
             if str(old_v).strip() != str(new_v).strip():
                 return True
     return False
+
+
+def start_loading_cat(mw) -> None:
+    """显示工作小猫加载动画（幂等）：定位浮层 + 展示 + 启动帧播放
+
+    扫描线程化后主线程事件循环空闲，QMovie 由事件循环自然驱动跳帧；
+    processEvents 泵一次确保首帧立即上屏，无需复杂 pump。
+    """
+    label = getattr(mw, "loading_cat_label", None)
+    movie = getattr(mw, "loading_cat_movie", None)
+    if label is None or movie is None:
+        return
+    label.move(8, -175)  # 子控件坐标系：定位到进度条上方
+    label.show()
+    label.raise_()  # 浮到进度条之上不被遮挡
+    if movie.state() != QMovie.MovieState.Running:
+        movie.start()
+    QApplication.processEvents()
+
+
+def stop_loading_cat(mw) -> None:
+    """停止工作小猫加载动画（幂等）：停帧 + 隐藏"""
+    movie = getattr(mw, "loading_cat_movie", None)
+    label = getattr(mw, "loading_cat_label", None)
+    if movie is not None and movie.state() == QMovie.MovieState.Running:
+        movie.stop()
+    if label is not None:
+        label.hide()

@@ -4,8 +4,10 @@
 扫描标签页 - 漫画目录扫描操作面板
 """
 
+from pathlib import Path
+
 from PyQt6.QtCore import Qt, QSettings
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QMovie
 from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QGroupBox,
                              QHBoxLayout, QLabel, QLineEdit, QProgressBar,
                              QPushButton, QRadioButton, QTextEdit, QVBoxLayout,
@@ -290,6 +292,17 @@ def build_scan_tab(mw, tab_widget):
         }
     """)
     scan_layout.addWidget(mw.progress_bar)
+
+    # 工作小猫加载动画：子控件挂进度条，move+raise_ 悬浮覆盖其上方（鼠标穿透）
+    mw.loading_cat_label = QLabel(mw.progress_bar)
+    mw.loading_cat_label.setFixedSize(200, 200)
+    mw.loading_cat_label.setScaledContents(True)
+    mw.loading_cat_label.setAttribute(
+        Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+    mw.loading_cat_movie = QMovie(  # 引用挂 mw 防 GC
+        str(Path(__file__).resolve().parent.parent / "assets" / "loading_cat.gif"))
+    mw.loading_cat_label.setMovie(mw.loading_cat_movie)
+    mw.loading_cat_label.hide()
 
     scan_group.setLayout(scan_layout)
     layout.addWidget(scan_group)
