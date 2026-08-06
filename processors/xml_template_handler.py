@@ -27,24 +27,31 @@ class XMLTemplateHandler:
         Returns:
             Dict[str, Any]: ComicInfo基础数据字典
         """
+        # 根据 folder_info 自动判定短篇（宽松解析会写入 vol_type/vol_info/tags）
+        is_short_story = is_short_story or (
+            folder_info.get("vol_type") == "短篇"
+            or folder_info.get("vol_info") == "短篇"
+            or "短篇" in (folder_info.get("tags") or [])
+        )
+
         if is_short_story:
             template = SHORT_STORY_TEMPLATE.copy()
         else:
             template = COMICINFO_TEMPLATE.copy()
         
-                        # 填充基础信息
+        # 填充基础信息（短篇保留 SHORT_STORY_TEMPLATE 的 Tags）
         template.update({
             "Title": folder_info["series"],
             "Series": folder_info["series"],
             "Writer": folder_info["author"],
             "Summary": "",
-            "Tags": "",
+            "Tags": "短篇" if is_short_story else "",
         })
         
         # 设置卷数信息
         if is_short_story:
             template.update({
-                "Count": "",  # 短篇不显示Count
+                "Count": "1",  # 短篇 = 一卷全
                 "Volume": "",  # 短篇不显示Volume
                 "Status": "Completed"  # 短篇默认已完成
             })
@@ -170,14 +177,13 @@ class XMLTemplateHandler:
             # 当不确定作者角色时，将所有作者都放在Writer和Penciller字段中
             all_authors = ", ".join(authors)
 
-            # 使用文件夹信息填充
+            # 使用文件夹信息填充（Tags 沿用 create_base_template 的结果，短篇保留"短篇"）
             template.update({
                 "Title": folder_info["series"],
                 "Series": folder_info["series"],
                 "Writer": all_authors,  # Writer字段包含所有作者
                 "Penciller": all_authors,  # Penciller字段也包含所有作者
                 "Summary": "",
-                "Tags": "",
                 "Web": "",
                 "Rating": ""
             })

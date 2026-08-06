@@ -55,7 +55,7 @@ COMICINFO_TEMPLATE = {
 # 短篇特殊模板
 SHORT_STORY_TEMPLATE = {
     **COMICINFO_TEMPLATE,
-    "Count": "",            # 短篇不显示系列总卷数
+    "Count": "1",            # 短篇 = 一卷全
     "Volume": "",           # 短篇不显示单本书卷数
     "Summary": "短篇漫画",    # 短篇简介
     "Tags": "短篇",         # 短篇标签
