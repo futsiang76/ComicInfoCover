@@ -31,7 +31,8 @@ def _merge_folder_tags(existing_tags: str, folder_name: str) -> str:
     """
     from parsers.folder_parser import parse_folder_name_lenient
     parsed = parse_folder_name_lenient(folder_name)
-    folder_tags = parsed.get("tags", []) if parsed else []
+    # 宽松解析的 tags + aliases 均写入 Tags（ComicInfo XML 无别名字段，别名并入 Tags 才能在 XML 体现）
+    folder_tags = (list(parsed.get("tags", []) or []) + list(parsed.get("aliases", []) or [])) if parsed else []
     if not folder_tags:
         return existing_tags
     existing = [t.strip() for t in existing_tags.split(',') if t.strip()] if existing_tags else []
