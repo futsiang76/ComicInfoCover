@@ -111,6 +111,40 @@ def _filter_series_volumes(items: List[Dict]) -> List[Dict]:
                     or _has_volume_marker(item.get("name_cn") or ""))]
 
 
+# ---- 网页作者兜底：老条目 API infobox 无作者字段时，抓网页信息栏提取 ----
+# 作者类 tip 字段（与 extract_bangumi_authors 的 author_types 对应）
+_WEB_AUTHOR_TIPS = (
+    "作者|作画|原作|脚本|监督|导演|原著|插画"
+    "|ストーリー|コミカライズ|原案|監督|演出|イラスト|キャラクターデザイン"
+    "|メカニックデザイン|オリジナルキャラクターデザイン"
+)
+# 信息栏字段：<span class="tip">作者: </span> 后接该字段内容（到下一 tip 或 li 结束）
+_WEB_AUTHOR_FIELD_RE = re.compile(
+    r'<span class="tip">\s*(' + _WEB_AUTHOR_TIPS + r')\s*[:：]?\s*</span>'
+    r'(.*?)(?=<span class="tip">|</li>|</ul>|$)',
+    re.DOTALL | re.IGNORECASE,
+)
+# 字段内人物链接：<a href="/person/39" class="l">CLAMP</a>
+_PERSON_LINK_RE = re.compile(r'<a[^>]+href="/person/\d+"[^>]*>(.*?)</a>', re.DOTALL)
+
+
+def _parse_web_authors(html: str) -> List[str]:
+    """从 Bangumi 网页信息栏 HTML 提取作者名列表
+
+    匹配所有作者类 tip 字段（作者/原作/作画 等），提取字段内全部 /person/
+    人物链接文本；同名去重保序。无匹配返回空列表。
+    """
+    if not html:
+        return []
+    authors = []
+    for match in _WEB_AUTHOR_FIELD_RE.finditer(html):
+        for name in _PERSON_LINK_RE.findall(match.group(2)):
+            name = re.sub(r'<[^>]+>', '', name).strip()
+            if name:
+                authors.append(name)
+    return list(dict.fromkeys(authors))
+
+
 class BangumiFetcher:
     def __init__(self):
         self.session = requests.Session()
@@ -125,6 +159,9 @@ class BangumiFetcher:
         
         # 禁用SSL证书验证（解决HTTPS连接问题）
         self.session.verify = False
+
+        # 网页作者兜底缓存：同一 subject_id 只抓取一次（实例内生效）
+        self._web_authors_cache: Dict[int, List[str]] = {}
 
     def search_manga(self, keyword: str, folder_info: Optional[Dict] = None) -> List[Dict]:
         """搜索漫画，返回所有匹配结果（前10个）"""
@@ -318,6 +355,35 @@ class BangumiFetcher:
         except Exception as e:
             print(f"🔴 获取详情失败 [{subject_id}]: {str(e)[:50]}")
             return None
+
+    def fetch_web_authors(self, subject_id: int) -> List[str]:
+        """从 Bangumi 网页信息栏兜底提取作者（API infobox 无作者字段时使用）
+
+        老条目（如 37953）API infobox 无「作者」字段，但网页版信息栏有
+        `作者: <a href="/person/39">CLAMP</a>`。带实例级缓存：同一
+        subject_id 只抓取一次；超时/失败返回空列表，不抛异常。
+
+        Args:
+            subject_id: Bangumi 条目 ID
+
+        Returns:
+            List[str]: 作者名列表；无作者或失败返回空列表
+        """
+        if subject_id in self._web_authors_cache:
+            return self._web_authors_cache[subject_id]
+        try:
+            url = f"https://bgm.tv/subject/{subject_id}"
+            resp = self.session.get(url, timeout=TIMEOUT, verify=False)
+            resp.raise_for_status()
+            # bgm.tv 响应头无 charset，requests 默认按 ISO-8859-1 解码导致中文乱码；
+            # 页面实际为 UTF-8，显式指定编码后再解析作者字段
+            resp.encoding = "utf-8"
+            authors = _parse_web_authors(resp.text)
+        except Exception as e:
+            print(f"🔴 网页作者提取失败 [{subject_id}]: {str(e)[:50]}")
+            authors = []
+        self._web_authors_cache[subject_id] = authors
+        return authors
 
 
     def extract_bangumi_authors(self, detail: Dict) -> List[str]:

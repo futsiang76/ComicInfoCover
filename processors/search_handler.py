@@ -85,11 +85,16 @@ class SearchHandler:
         return search_results
     
     def _extract_result_authors(self, result: Dict) -> List[str]:
-        """从单个搜索结果提取 Bangumi 作者（经详情接口；详情缺失返回空列表）"""
+        """从单个搜索结果提取 Bangumi 作者
+
+        优先经详情接口 infobox 提取；为空（老条目 infobox 无作者字段）时
+        兜底抓取网页信息栏提取作者。
+        """
         detail = self.fetcher.get_manga_detail(result["id"])
-        if not detail:
-            return []
-        return self.fetcher.extract_bangumi_authors(detail)
+        authors = self.fetcher.extract_bangumi_authors(detail) if detail else []
+        if not authors:
+            authors = self.fetcher.fetch_web_authors(result["id"])
+        return authors
 
     def filter_matching_results(self, search_results: List[Dict], folder_info: Dict, 
                                author_match_threshold: float) -> List[Dict]:
