@@ -18,13 +18,12 @@ class ScanThread(QThread):
     scan_completed = pyqtSignal(list)  # 扫描结果列表
     error_occurred = pyqtSignal(str)  # 错误消息
 
-    def __init__(self, manga_root: str, mode: int, auto_turbo: int, manga_value: Optional[str] = None, use_local_only: bool = False, bangumi_id: Optional[int] = None, parent=None):
+    def __init__(self, manga_root: str, mode: int, auto_turbo: int, manga_value: Optional[str] = None, bangumi_id: Optional[int] = None, parent=None):
         super().__init__()
         self.manga_root = manga_root
         self.mode = mode
         self.auto_turbo = auto_turbo
         self.manga_value = manga_value
-        self.use_local_only = use_local_only
         self.bangumi_id = bangumi_id
         self._is_running = True
         # 对话框桥接器（在 __init__ 中创建，确保主线程亲和性）
@@ -55,7 +54,6 @@ class ScanThread(QThread):
                 mode_skip_xml=self.mode,
                 auto_turbo=(self.auto_turbo == 1),
                 manga_value=self.manga_value,
-                use_local_only=self.use_local_only,
                 bangumi_id=self.bangumi_id,
                 gui_callback=gui_callback
             )

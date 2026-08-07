@@ -31,9 +31,6 @@ MODE_DESCRIPTIONS = {
 def _on_source_changed(mw, text: str) -> None:
     """数据源下拉框变化：记录选中源并联动模式控件显隐"""
     mw.selected_source = text
-    if text not in MODE_CONSTRAINED_SOURCES:
-        # 切回 Bangumi：仅使用本地信息重置为未勾选（受限源下隐藏，不保留勾选状态）
-        mw.local_only_check.setChecked(False)
     apply_source_mode_constraint(mw, text)
 
 
@@ -51,7 +48,6 @@ def apply_source_mode_constraint(mw, source: str) -> None:
         hidden = constrained and val != 0
         radio.setVisible(not hidden)
         radio.setEnabled(not hidden)
-    mw.local_only_check.setVisible(not constrained)
     if constrained:
         # 无人值守与受限模式互斥，切源时强制复位
         mw.auto_turbo_check.setChecked(False)
@@ -235,12 +231,6 @@ def build_scan_tab(mw, tab_widget):
     path_layout.addWidget(browse_btn)
 
     scan_layout.addLayout(path_layout)
-
-    # 选项
-    options_layout = QHBoxLayout()
-    mw.local_only_check = QCheckBox("仅使用本地信息")
-    options_layout.addWidget(mw.local_only_check)
-    scan_layout.addLayout(options_layout)
 
     # 主要操作按钮区域 - 使用更突出的样式
     main_action_layout = QHBoxLayout()
