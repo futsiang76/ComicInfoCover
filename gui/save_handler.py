@@ -21,21 +21,6 @@ def _scan_running(mw) -> bool:
     return thread is not None and thread.isRunning()
 
 
-def save_threads_running(mw) -> bool:
-    """是否存在仍在运行的保存线程（后台写盘未全部完成）"""
-    return any(t.isRunning() for t in getattr(mw, "_save_threads", []))
-
-
-def _switch_to_results_if_saves_done(mw) -> None:
-    """保存全部结束后，若存在待切页标记则切到结果页"""
-    if not getattr(mw, "_pending_switch_to_results", False):
-        return
-    if save_threads_running(mw):
-        return
-    mw._pending_switch_to_results = False
-    mw.tab_widget.setCurrentIndex(1)
-
-
 def save_changes(mw, show_result: bool = True):
     modified_results = [r for r in mw.scan_results if r.get("process_status") == "已修改"]
 
@@ -80,6 +65,3 @@ def _on_save_finished(mw, show_result: bool, modified_results: list, total_files
             QMessageBox.warning(mw, "保存结果", msg)
         else:
             QMessageBox.information(mw, "保存结果", msg)
-
-    # 扫描收尾若因写盘未完成而待切页：保存全部结束后切到结果页
-    _switch_to_results_if_saves_done(mw)

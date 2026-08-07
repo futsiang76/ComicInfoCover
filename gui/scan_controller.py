@@ -11,7 +11,6 @@ from typing import Dict, List, Optional, Tuple
 from PyQt6.QtWidgets import QMessageBox
 
 from .edit_dialog import EditDialog
-from .save_handler import save_threads_running
 from .scan_tab import apply_source_mode_constraint
 from .scan_thread import ScanThread
 from .utils import start_loading_cat, stop_loading_cat
@@ -76,9 +75,8 @@ def start_scan(mw):
     mw.log_text.append(f"无人值守: {'开启' if auto_turbo else '关闭'}")
     mw.log_text.append(f"Manga设置: {manga_value}")
 
-    # 清空结果（并复位上一轮可能的待切页标记，避免旧保存线程完成后误切页）
+    # 清空结果
     mw.scan_results = []
-    mw._pending_switch_to_results = False
     mw.update_results_table()
 
     # 手动匹配模式：逐个系列文件夹「输入→查询→确认」，后台线程执行
@@ -384,20 +382,12 @@ def on_progress_updated(mw, progress: int, message: str):
 def _finish_scan(mw, results: List[Dict], mode: int) -> None:
     """扫描/编辑收尾：路由到结果页或扫描页（未来 008 封面流程的挂载点）
 
-    有结果 → 切到结果页；无结果 → 留在扫描页。
-    有结果但后台保存线程仍在写盘 → 标记待切页并保持小猫动画，保存全部完成后
-    由 save_handler._on_save_finished 切到结果页（避免「写入未完成就跳转」）。
+    有结果 → 直接切到结果页；无结果 → 留在扫描页。
     扩展点：未来 008 合并封面改图后，在此调用 _maybe_start_cover_flow(mw, results, mode)
     判断是否进入封面处理流程（结果页封面缩略图 → 用户选择是否改图）。
     """
     if not results:
         mw.tab_widget.setCurrentIndex(0)  # 无结果 → 扫描页
-        return
-    if save_threads_running(mw):
-        # 后台写盘仍在进行：不立即切页，保存全部完成后由 _on_save_finished 切页
-        mw._pending_switch_to_results = True
-        mw.log_text.append("写入磁盘进行中，写入完成后自动跳转结果页…")
-        start_loading_cat(mw)  # 写盘阶段保持小猫动画，完成后由 _on_save_finished 收起
         return
     mw.tab_widget.setCurrentIndex(1)      # 有结果 → 结果页
     # 未来扩展点：_maybe_start_cover_flow(mw, results, mode)
