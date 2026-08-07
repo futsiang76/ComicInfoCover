@@ -12,7 +12,7 @@ from functools import partial
 from PyQt6.QtWidgets import QMessageBox
 
 from .save_thread import SaveThread
-from .utils import start_loading_cat, stop_loading_cat
+from .utils import set_results_saving, start_loading_cat, stop_loading_cat
 
 
 def _scan_running(mw) -> bool:
@@ -40,10 +40,15 @@ def save_changes(mw, show_result: bool = True):
 
     thread.start()
 
+    # 写盘进行中：结果页可交互元素禁用 + 显示工作小猫（不重建卡片，避免写盘期间并发读 zip）
+    mw._save_count = getattr(mw, "_save_count", 0) + 1
+    set_results_saving(mw, True)
+
 
 def _on_save_finished(mw, show_result: bool, modified_results: list, total_files: int,
                       success_files: int, error_messages: list) -> None:
     """保存线程完成（主线程槽）：收尾小猫动画 + 更新状态 + 结果弹窗"""
+    mw._save_count = max(0, getattr(mw, "_save_count", 0) - 1)  # 写盘计数-1，update_results_table 据此恢复交互
     # 扫描进行中的逐系列保存由扫描流程负责收尾小猫，此处不重复停止
     if not _scan_running(mw):
         stop_loading_cat(mw)

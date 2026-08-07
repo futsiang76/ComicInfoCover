@@ -10,9 +10,30 @@ from PyQt6.QtWidgets import QScrollArea, QVBoxLayout, QWidget
 
 def build_results_tab(mw, tab_widget):
     """创建结果标签页"""
+    from pathlib import Path
+
+    from PyQt6.QtCore import QSize
+    from PyQt6.QtGui import QMovie
+
+    from gui.utils import SmoothMovieLabel
+
     results_tab = QWidget()
     layout = QVBoxLayout()
     results_tab.setLayout(layout)
+
+    # 写盘期间在结果页顶部显示工作小猫（写盘完成自动隐藏）
+    mw.results_cat_movie = QMovie(
+        str(Path(__file__).resolve().parent.parent / "assets" / "loading_cat.gif"))
+    mw.results_cat_movie.jumpToFrame(0)
+    cat_size = mw.results_cat_movie.frameRect().size()
+    if cat_size.isEmpty():  # 兜底：GIF 异常时退回原始像素，避免 0x0 不可见
+        cat_size = QSize(282, 282)
+    if cat_size.height():  # 等比缩小，避免内嵌小猫过大占满结果页顶部
+        cat_size = QSize(round(cat_size.width() * 140 / cat_size.height()), 140)
+    mw.results_cat_label = SmoothMovieLabel(mw.results_cat_movie, results_tab)
+    mw.results_cat_label.setFixedSize(cat_size)
+    mw.results_cat_label.hide()
+    layout.addWidget(mw.results_cat_label, 0, Qt.AlignmentFlag.AlignHCenter)
 
     # 滚动区域
     scroll_area = QScrollArea()

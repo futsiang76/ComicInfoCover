@@ -93,3 +93,30 @@ def stop_loading_cat(mw) -> None:
         return
     label.stop()
     label.hide()
+
+
+def save_threads_running(mw) -> bool:
+    """是否有写盘线程仍在运行
+
+    计数由 save_handler 维护（save_changes +1、_on_save_finished -1），比直接
+    查 mw._save_threads 的 isRunning 更稳：QThread 在 run() 末尾 emit
+    save_finished 时尚未置 isRunning=False，主线程槽此时查 isRunning 可能误判
+    为仍在写盘，导致结果页交互元素恢复不了。
+    """
+    return getattr(mw, "_save_count", 0) > 0
+
+
+def set_results_saving(mw, saving: bool) -> None:
+    """写盘期间禁用结果页可交互元素（展开/编辑/封面裁剪）并显示工作小猫；完成后恢复"""
+    for widget in getattr(mw, "_interactive_widgets", []):
+        if widget is not None:
+            widget.setEnabled(not saving)
+    label = getattr(mw, "results_cat_label", None)
+    if label is not None:
+        if saving:
+            label.show()
+            label.start()
+            QApplication.processEvents()
+        else:
+            label.stop()
+            label.hide()

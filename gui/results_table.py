@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (QFormLayout, QGridLayout, QGroupBox, QHBoxLayout,
                              QWidget)
 
 from gui.crop_queue import _open_crop_flow
+from gui.utils import save_threads_running, set_results_saving
 from processors.cover_utils import read_cover_bytes, sort_volume_files
 
 # 封面缩略图尺寸（870x1230 竖版比例）
@@ -256,6 +257,7 @@ def _toggle_volume_grid(result: dict, holder: QWidget, btn: QPushButton,
 
 
 def update_results_table(mw):
+    mw._interactive_widgets = []  # 本次重建的可交互元素（写盘期间禁用，重建后按当前状态恢复/禁用）
     # 清空现有结果（results_layout 中的所有子部件）
     while mw.results_layout.count():
         child = mw.results_layout.takeAt(0)
@@ -295,17 +297,17 @@ def update_results_table(mw):
             lambda _, r=result, g=grid_holder, b=expand_btn:
             _toggle_volume_grid(r, g, b, lambda f: _make_crop_handler(r, f))
         )
+        mw._interactive_widgets.append(expand_btn)  # 展开卷封面网格，写盘期间禁用
         cover_block = QVBoxLayout()
         cover_block.setSpacing(0)  # 「裁剪封面」紧贴展开/收起按钮上方
         cover_block.setContentsMargins(0, 8, 12, 0)  # 缩略图与卡片顶部留间距（不顶头），右边距 12px 分隔右侧信息列
-        cover_block.addWidget(
-            _cover_with_badge(
-                first_info,
-                bool(first_info) and first_info.get("ratio_ok") is False,
-                _make_crop_handler(result, first_name) if first_name else None,
-            ),
-            0, Qt.AlignmentFlag.AlignHCenter,
+        cover_container = _cover_with_badge(
+            first_info,
+            bool(first_info) and first_info.get("ratio_ok") is False,
+            _make_crop_handler(result, first_name) if first_name else None,
         )
+        mw._interactive_widgets.append(cover_container)  # 封面缩略图（点击裁剪），写盘期间禁用
+        cover_block.addWidget(cover_container, 0, Qt.AlignmentFlag.AlignHCenter)
         crop_label = QLabel("裁剪封面")
         crop_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         crop_label.setContentsMargins(0, 0, 0, 0)  # 无内边距，紧贴按钮
@@ -373,6 +375,7 @@ def update_results_table(mw):
         edit_btn.setMinimumWidth(100)
         edit_btn.setStyleSheet(EDIT_BTN_STYLE)
         edit_btn.clicked.connect(lambda _, r=row: mw.edit_row(r))
+        mw._interactive_widgets.append(edit_btn)  # 编辑元数据，写盘期间禁用
         button_layout.addWidget(edit_btn)
         button_layout.addStretch()
 
@@ -384,3 +387,6 @@ def update_results_table(mw):
 
         group_box.setLayout(outer_layout)
         mw.results_layout.addWidget(group_box)
+
+    # 写盘进行中：禁用本次构建的可交互元素 + 显示工作小猫；写盘完成自动恢复
+    set_results_saving(mw, save_threads_running(mw))
