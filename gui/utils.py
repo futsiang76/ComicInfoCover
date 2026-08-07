@@ -115,6 +115,11 @@ def set_results_saving(mw, saving: bool) -> None:
     if label is not None:
         if saving:
             label.show()
+            label.raise_()  # 浮到最上层
+            # 窗体正中心（先 adjustSize 确保尺寸正确）
+            label.adjustSize()
+            mw_w, mw_h = mw.width(), mw.height()
+            label.move((mw_w - label.width()) // 2, (mw_h - label.height()) // 2)
             label.start()
             QApplication.processEvents()
         else:
