@@ -28,8 +28,7 @@ def build_results_tab(mw, tab_widget):
     cat_size = mw.results_cat_movie.frameRect().size()
     if cat_size.isEmpty():  # 兜底：GIF 异常时退回原始像素，避免 0x0 不可见
         cat_size = QSize(282, 282)
-    if cat_size.height():  # 等比缩小，避免内嵌小猫过大占满结果页顶部
-        cat_size = QSize(round(cat_size.width() * 140 / cat_size.height()), 140)
+    # 窗体悬浮居中，无需缩小（与扫描加载猫一致用原大）
     # 父级为主窗口（悬浮用，不加入布局）；位置由 set_results_saving 居中
     mw.results_cat_label = SmoothMovieLabel(mw.results_cat_movie, mw)
     mw.results_cat_label.setFixedSize(cat_size)
