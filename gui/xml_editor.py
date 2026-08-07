@@ -90,6 +90,10 @@ def on_edit_xml_clicked(mw):
     from processors.zip_handler import add_file_to_zip
 
     current_dir = mw.path_edit.text().strip()
+    # 剥离首尾引号（从文件管理器复制的路径可能带 " 或 '）
+    if len(current_dir) >= 2 and current_dir[0] in ('"', "'") and current_dir[-1] == current_dir[0]:
+        current_dir = current_dir[1:-1]
+    current_dir = current_dir.strip()
     if not current_dir:
         QMessageBox.warning(mw, "错误", "请先选择漫画目录")
         return
