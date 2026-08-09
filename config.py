@@ -117,6 +117,10 @@ def _api_key_from_config(key: str, legacy_name: str) -> str:
     return _legacy_api_key(legacy_name)
 
 
+# ===================== 应用信息 =====================
+APP_NAME = "ComicInfoCover"
+APP_VERSION = "1.0.0"
+
 # ===================== 核心配置 =====================
 # 启动时从 user_config.json 加载（设置对话框保存时直接改写这些模块属性）
 _user_config = _read_user_config()

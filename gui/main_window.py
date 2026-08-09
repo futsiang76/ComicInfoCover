@@ -4,6 +4,7 @@
 主窗口模块 - PyQt6 GUI主窗口
 """
 
+import os
 from typing import Dict, List, Optional
 
 from PyQt6.QtCore import Qt, QSettings, QThread, pyqtSignal
@@ -11,10 +12,10 @@ from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog,
                              QDialogButtonBox, QFileDialog,
                              QHeaderView, QInputDialog, QLabel, QLineEdit,
-                             QMainWindow, QMessageBox, QProgressBar,
+                             QMainWindow, QMenu, QMessageBox, QProgressBar,
                              QPushButton, QRadioButton, QTableWidget,
                              QTableWidgetItem, QTabWidget, QTextEdit,
-                             QVBoxLayout, QWidget)
+                             QToolButton, QVBoxLayout, QWidget)
 
 import config
 from config import AUTO_TURBO_MATCH, MODE_SKIP_XMLEXIST
@@ -82,15 +83,21 @@ class MainWindow(QMainWindow):
         self.create_scan_tab()
         self.create_results_tab()
 
-        # 齿轮按钮：放在标签栏最右端（空白区）
-        from gui.settings_dialog import SettingsDialog
-        gear_btn = QPushButton("\u2699")
-        gear_btn.setFixedSize(26, 22)
-        gear_btn.setToolTip("打开应用设置")
-        gear_btn.setFlat(True)
+        # 齿轮菜单按钮：放在标签栏最右端（空白区），点击弹出下拉菜单
+        gear_btn = QToolButton()
+        gear_btn.setText("\u2699")
+        gear_btn.setToolTip("菜单")
+        gear_btn.setArrowType(Qt.ArrowType.DownArrow)
+        gear_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         gear_btn.setFont(QFont("Segoe UI Symbol", 16))
-        gear_btn.setStyleSheet("QPushButton { background: transparent; border: none; padding: 0 6px 0 0; margin: 0; } QPushButton:hover { background: #e0e0e0; border-radius: 4px; }")
-        gear_btn.clicked.connect(lambda: SettingsDialog(self).exec())
+        gear_btn.setStyleSheet("QToolButton { background: transparent; border: none; padding: 0 6px 0 0; margin: 0; } QToolButton:hover { background: #e0e0e0; border-radius: 4px; } QToolButton::menu-button { border: none; }")
+        gear_menu = QMenu(gear_btn)
+        gear_menu.addAction("应用设置", self._open_settings)
+        gear_menu.addAction("法律声明", lambda: self._show_doc_dialog("法律声明", "法律声明.md"))
+        gear_menu.addAction("使用说明", lambda: self._show_doc_dialog("使用说明", "使用说明.md"))
+        gear_menu.addAction("版本", self._show_about_dialog)
+        gear_menu.addAction("检查更新", self._check_update_placeholder)
+        gear_btn.setMenu(gear_menu)
         self.tab_widget.setCornerWidget(gear_btn)
         
         # 启动路径：记住上次路径=开 → 上次路径 > 默认目录；关 → 仅默认目录；均无 → 提示选择
@@ -100,6 +107,65 @@ class MainWindow(QMainWindow):
             self.path_edit.setText(initial_path)
         else:
             self.path_edit.setPlaceholderText("请选择漫画库目录")
+
+    def _open_settings(self):
+        """打开应用设置对话框"""
+        from gui.settings_dialog import SettingsDialog
+        SettingsDialog(self).exec()
+
+    def _doc_path(self, filename: str) -> str:
+        """返回 docs/ 目录下文档的绝对路径（项目根 docs/）"""
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(project_root, "docs", filename)
+
+    def _show_doc_dialog(self, title: str, filename: str):
+        """模态对话框显示 docs/ 下 markdown 文档（只读 + 滚动）；文件缺失时优雅提示"""
+        doc_path = self._doc_path(filename)
+        if not os.path.isfile(doc_path):
+            QMessageBox.information(self, title, f"文档文件不存在：{doc_path}")
+            return
+        try:
+            with open(doc_path, encoding="utf-8") as f:
+                content = f.read()
+        except OSError as e:
+            QMessageBox.warning(self, title, f"读取文档失败：{e}")
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.resize(640, 520)
+        layout = QVBoxLayout(dialog)
+        text_edit = QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setPlainText(content)
+        layout.addWidget(text_edit)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    def _show_about_dialog(self):
+        """版本/about 对话框：应用名 + 版本 + 版权行 + GitHub 链接"""
+        about_text = (
+            f"<h3>{config.APP_NAME} {config.APP_VERSION}</h3>"
+            "<p>本地漫画库 ComicInfo.xml 批量整理工具</p>"
+            "<p>© 2026 futsiang76. All rights reserved.</p>"
+            '<p><a href="https://github.com/futsiang76/ComicInfoCover">'
+            "GitHub: futsiang76/ComicInfoCover</a></p>"
+        )
+        box = QMessageBox(self)
+        box.setWindowTitle("版本")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText(about_text)
+        label = box.findChild(QLabel)
+        if label is not None:
+            label.setOpenExternalLinks(True)
+        box.exec()
+
+    def _check_update_placeholder(self):
+        """检查更新占位：功能尚未上线，点击提示"""
+        QMessageBox.information(self, "检查更新",
+                                "检查更新功能即将上线，敬请期待。")
 
     def _initial_manga_path(self, settings) -> str:
         """计算启动时的漫画根目录（为空则界面提示选择，不落任何写死路径）
