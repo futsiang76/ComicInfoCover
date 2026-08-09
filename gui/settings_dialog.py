@@ -4,11 +4,26 @@
 
 import config
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QPainter
+from PyQt6.QtGui import QColor, QFontMetrics, QPainter
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
                              QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
-                             QLineEdit, QPushButton, QSpinBox, QVBoxLayout,
+                             QLabel, QLineEdit, QPushButton, QSpinBox, QVBoxLayout,
                              QWidget)
+
+# 各分组表单标签文本（单一来源：统一标签列宽按此集合中最长者计算）
+_LABELS = {
+    "source_token": "Bangumi Access Token:",
+    "source_comicvine": "ComicVine API Key:",
+    "scan_fuzz": "作品名模糊匹配阈值 (%):",
+    "scan_author": "作者名匹配阈值 (%):",
+    "scan_timeout": "请求超时时间 (秒):",
+    "scan_retries": "请求重试次数:",
+    "result_format": "保存格式:",
+    "result_delete": "写入后删除旧文件:",
+    "dir_default": "默认漫画目录:",
+    "dir_remember": "记住上次路径:",
+    "crop_memory": "封面裁剪定位记忆:",
+}
 
 
 class SwitchButton(QCheckBox):
@@ -16,7 +31,7 @@ class SwitchButton(QCheckBox):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedSize(48, 26)
+        self.setFixedSize(48, 20)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -40,7 +55,22 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("应用设置")
         self.setMinimumWidth(460)
+        self._label_width = None
         self._setup_ui()
+
+    def _make_label(self, text: str) -> QLabel:
+        """创建统一宽度的表单标签，保证各分组输入控件左边缘对齐同一竖线"""
+        label = QLabel(text)
+        label.setFixedWidth(self._label_column_width())
+        return label
+
+    def _label_column_width(self) -> int:
+        """统一标签列宽：取全部表单标签中最长文本的渲染宽度（仅计算一次）"""
+        if self._label_width is None:
+            fm = QFontMetrics(self.font())
+            self._label_width = max(
+                fm.boundingRect(text).width() for text in _LABELS.values())
+        return self._label_width
 
     def _setup_ui(self):
         layout = QVBoxLayout()
@@ -55,12 +85,12 @@ class SettingsDialog(QDialog):
         self.bangumi_edit = QLineEdit()
         self.bangumi_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.bangumi_edit.setText(config.BANGUMI_ACCESS_TOKEN)
-        source_form.addRow("Bangumi Access Token:", self.bangumi_edit)
+        source_form.addRow(self._make_label(_LABELS["source_token"]), self.bangumi_edit)
 
         self.comicvine_edit = QLineEdit()
         self.comicvine_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.comicvine_edit.setText(config.COMICVINE_API_KEY)
-        source_form.addRow("ComicVine API Key:", self.comicvine_edit)
+        source_form.addRow(self._make_label(_LABELS["source_comicvine"]), self.comicvine_edit)
 
         layout.addWidget(source_group)
 
@@ -72,22 +102,22 @@ class SettingsDialog(QDialog):
         self.fuzz_spin = QSpinBox()
         self.fuzz_spin.setRange(0, 100)
         self.fuzz_spin.setValue(config.FUZZ_THRESHOLD)
-        scan_form.addRow("作品名模糊匹配阈值 (%):", self.fuzz_spin)
+        scan_form.addRow(self._make_label(_LABELS["scan_fuzz"]), self.fuzz_spin)
 
         self.author_spin = QSpinBox()
         self.author_spin.setRange(0, 100)
         self.author_spin.setValue(config.AUTHOR_MATCH_THRESHOLD)
-        scan_form.addRow("作者名匹配阈值 (%):", self.author_spin)
+        scan_form.addRow(self._make_label(_LABELS["scan_author"]), self.author_spin)
 
         self.timeout_spin = QSpinBox()
         self.timeout_spin.setRange(1, 60)
         self.timeout_spin.setValue(config.TIMEOUT)
-        scan_form.addRow("请求超时时间 (秒):", self.timeout_spin)
+        scan_form.addRow(self._make_label(_LABELS["scan_timeout"]), self.timeout_spin)
 
         self.retries_spin = QSpinBox()
         self.retries_spin.setRange(0, 10)
         self.retries_spin.setValue(config.MAX_RETRIES)
-        scan_form.addRow("请求重试次数:", self.retries_spin)
+        scan_form.addRow(self._make_label(_LABELS["scan_retries"]), self.retries_spin)
 
         layout.addWidget(scan_group)
 
@@ -104,11 +134,11 @@ class SettingsDialog(QDialog):
         self.save_format_combo.addItem("CB7 (.cb7)", "cb7")
         index = self.save_format_combo.findData(config.SAVE_FORMAT)
         self.save_format_combo.setCurrentIndex(index if index >= 0 else 0)
-        result_form.addRow("保存格式:", self.save_format_combo)
+        result_form.addRow(self._make_label(_LABELS["result_format"]), self.save_format_combo)
 
         self.delete_after_convert_switch = SwitchButton()
         self.delete_after_convert_switch.setChecked(config.DELETE_AFTER_CONVERT)
-        result_form.addRow("写入后删除旧文件:", self.delete_after_convert_switch)
+        result_form.addRow(self._make_label(_LABELS["result_delete"]), self.delete_after_convert_switch)
 
         layout.addWidget(result_group)
 
@@ -129,11 +159,11 @@ class SettingsDialog(QDialog):
         dir_layout.addWidget(self.default_dir_edit)
         dir_layout.addWidget(browse_btn)
         dir_widget.setLayout(dir_layout)
-        dir_form.addRow("默认漫画目录:", dir_widget)
+        dir_form.addRow(self._make_label(_LABELS["dir_default"]), dir_widget)
 
         self.remember_last_path_switch = SwitchButton()
         self.remember_last_path_switch.setChecked(config.REMEMBER_LAST_PATH)
-        dir_form.addRow("记住上次路径:", self.remember_last_path_switch)
+        dir_form.addRow(self._make_label(_LABELS["dir_remember"]), self.remember_last_path_switch)
 
         layout.addWidget(dir_group)
 
@@ -144,7 +174,7 @@ class SettingsDialog(QDialog):
 
         self.crop_memory_switch = SwitchButton()
         self.crop_memory_switch.setChecked(config.CROP_MEMORY_ENABLED)
-        crop_form.addRow("封面裁剪定位记忆:", self.crop_memory_switch)
+        crop_form.addRow(self._make_label(_LABELS["crop_memory"]), self.crop_memory_switch)
 
         layout.addWidget(crop_group)
 
