@@ -106,10 +106,16 @@ class MainWindow(QMainWindow):
         """首次启动轻引导：first_run_done 未完成时弹出模态引导（主窗口显示后调用）
 
         点击「开始使用」后写入 first_run_done=true，下次启动不再弹出。
+        引导关闭后，把引导填写的默认目录同步到主界面扫描根目录输入框
+        （仅当输入框为空时；已有值如记住的上次路径则不覆盖，为空则不动）。
         """
         if config.FIRST_RUN_DONE:
             return
         OnboardingDialog(self).exec()
+        # 同步引导填写的默认目录到主界面（已有值不覆盖，为空不动作）
+        default_dir = (config.DEFAULT_MANGA_DIR or "").strip()
+        if default_dir and not self.path_edit.text().strip():
+            self.path_edit.setText(default_dir)
 
     def _initial_manga_path(self, settings) -> str:
         """计算启动时的漫画根目录（为空则界面提示选择，不落任何写死路径）
