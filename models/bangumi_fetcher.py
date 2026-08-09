@@ -4,19 +4,17 @@
 Bangumi API封装模块 - 处理所有Bangumi相关功能
 """
 
-import os
 import re
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import quote
 
 import requests
-from requests.adapters import HTTPAdapter
 from thefuzz import fuzz
 from zhconv import convert
 import urllib3
 
 import config
-from config import (AUTHOR_MATCH_THRESHOLD, FUZZ_THRESHOLD, MAX_RETRIES,
-                    SHOW_TOP_N, TIMEOUT)
+from config import FUZZ_THRESHOLD, SHOW_TOP_N, TIMEOUT
 
 # 禁用SSL警告（仅用于开发环境）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -146,10 +144,34 @@ def _parse_web_authors(html: str) -> List[str]:
     return list(dict.fromkeys(authors))
 
 
+def _parse_search_response(data: Dict) -> List[Dict]:
+    """解析 v2 GET 搜索响应，并做字段映射对齐 v0 POST 契约
+
+    v2 GET {base}/search/subject/{kw} 响应：
+        {"results": <总数 int>, "list": [...]}
+    - 真实条目在 list 字段（results 是 int 总数，非列表）
+    - 条目字段与 v0 POST 不同（v0: data[].name/name_cn；v2: list[].name/name_cn）
+
+    返回的条目保留后续处理所需字段（id/name/name_cn/summary/images/
+    date/country/infobox/volumes 等），images 归一为可能缺失的安全访问。
+    """
+    items = data.get("list", [])
+    if not isinstance(items, list):
+        return []
+    results = []
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        item = dict(raw)
+        # images 缺失时补空 dict，保持后续 .get("large"/"common") 安全
+        item.setdefault("images", {})
+        results.append(item)
+    return results
+
+
 class BangumiFetcher:
     def __init__(self):
         self.session = requests.Session()
-        self.session.mount("https://", HTTPAdapter(max_retries=MAX_RETRIES))
         self.session.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "application/json",
@@ -163,23 +185,74 @@ class BangumiFetcher:
         # 禁用SSL证书验证（解决HTTPS连接问题）
         self.session.verify = False
 
+        # failover 记忆：下一次请求从哪个镜像开始（初始官方，成功后更新）
+        self._mirror_index = 0
+
         # 网页作者兜底缓存：同一 subject_id 只抓取一次（实例内生效）
         self._web_authors_cache: Dict[int, List[str]] = {}
 
+    def _request_json(self, method: str, path: str,
+                      params: Optional[Dict] = None,
+                      json_payload: Optional[Dict] = None) -> Dict:
+        """带镜像 failover 的 JSON 请求
+
+        从上次成功镜像（初始官方）开始，逐个尝试 config.BANGUMI_MIRRORS：
+        - 网络错误（超时/连接/5xx）→ 立即切下一个镜像，不做传输层重试
+        - 成功 → 记录该镜像为下次请求的起始点（避免重复撞被墙的官方）
+        - 全部失败 → 抛最后一次异常（由调用方处理）
+
+        Args:
+            method: HTTP 方法（"GET"/"POST"）
+            path: 以 / 开头的 API 路径（不含域名）
+            params: 查询参数（可选）
+            json_payload: JSON 请求体（可选）
+
+        Returns:
+            Dict: 响应 JSON
+
+        Raises:
+            requests.exceptions.RequestException: 全部镜像失败时抛出最后一次异常
+        """
+        mirrors = config.BANGUMI_MIRRORS
+        if not mirrors:
+            raise requests.exceptions.RequestException("BANGUMI_MIRRORS 为空")
+        last_error: Optional[requests.exceptions.RequestException] = None
+        start = self._mirror_index % len(mirrors)
+        for offset in range(len(mirrors)):
+            index = (start + offset) % len(mirrors)
+            base = mirrors[index]
+            try:
+                response = self.session.request(
+                    method, base + path, params=params, json=json_payload,
+                    timeout=TIMEOUT, verify=False,
+                )
+                response.raise_for_status()
+                if index != self._mirror_index:
+                    # 记下可用镜像：下个请求直接从它开始
+                    self._mirror_index = index
+                return response.json()
+            except (requests.exceptions.ConnectionError,
+                    requests.exceptions.Timeout,
+                    requests.exceptions.HTTPError) as e:
+                last_error = e
+                print(f"⚠️  Bangumi 镜像不可用 [{base}{path}]: {str(e)[:50]}")
+        # 全挂才报错（循环内必有失败才会走到这里，last_error 不会为 None）
+        raise last_error
+
     def search_manga(self, keyword: str, folder_info: Optional[Dict] = None) -> List[Dict]:
-        """搜索漫画，返回所有匹配结果（前10个）"""
+        """搜索漫画，返回所有匹配结果（前10个）
+
+        统一走 v2 GET {base}/search/subject/{keyword}（官方与镜像均支持，
+        镜像不支持旧 POST /v0/search/subjects）；failover 由 _request_json 处理。
+        """
         try:
             keyword_cn = convert(keyword, "zh-cn")
-            url = "https://api.bgm.tv/v0/search/subjects?limit=10"
-            payload = {"keyword": keyword_cn, "filter": {"type": [1]}}  # 1=书籍/漫画
-            
-            response = self.session.post(
-                url,
-                json=payload,
-                timeout=TIMEOUT
-            )
-            response.raise_for_status()
-            results = response.json().get("data", [])
+            path = f"/search/subject/{quote(keyword_cn)}"
+            params = {"type": 1, "responseGroup": "small"}  # 1=书籍/漫画
+
+            data = self._request_json("GET", path, params=params)
+            # v2 GET response: {"results": <total int>, "list": [...]} - real items in list
+            results = _parse_search_response(data)
 
             # 逐条过滤：series=False 且名称带「卷号标记」的条目（系列的单卷）剔除；
             # 保留系列(series=True)、外传/原画集/设定集/一卷全(series=False 但无卷号标记)。
@@ -337,25 +410,15 @@ class BangumiFetcher:
         return []
 
     def get_manga_detail(self, subject_id: int) -> Optional[Dict]:
-        """获取漫画详细信息（含作者、出版社等）"""
+        """获取漫画详细信息（含作者、出版社等）
+
+        走 v0 GET {base}/v0/subjects/{id}（官方/镜像均支持）；failover 由
+        _request_json 处理。
+        """
         try:
-            url = f"https://api.bgm.tv/v0/subjects/{subject_id}"
-            response = self.session.get(url, timeout=TIMEOUT, verify=False)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.SSLError as e:
-            print(f"🔴 SSL证书验证失败 [{subject_id}]: {str(e)[:50]}")
-            print(f"💡 提示：已禁用SSL验证，如果问题持续，请检查网络连接或代理设置")
-            return None
-        except requests.exceptions.ConnectionError as e:
-            print(f"🔴 网络连接失败 [{subject_id}]: {str(e)[:50]}")
-            print(f"💡 提示：请检查网络连接、DNS解析或防火墙设置")
-            return None
-        except requests.exceptions.Timeout as e:
-            print(f"🔴 请求超时 [{subject_id}]: {str(e)[:50]}")
-            print(f"💡 提示：网络响应过慢，请检查网络状态")
-            return None
-        except Exception as e:
+            path = f"/v0/subjects/{subject_id}"
+            return self._request_json("GET", path)
+        except requests.exceptions.RequestException as e:
             print(f"🔴 获取详情失败 [{subject_id}]: {str(e)[:50]}")
             return None
 

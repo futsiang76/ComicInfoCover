@@ -199,8 +199,10 @@ class TestSearchMangaSeriesVolumeFilter:
     """测试 search_manga 逐条过滤集成行为"""
 
     def _make_fetcher(self, search_items):
+        # 搜索已统一为 v2 GET（{base}/search/subject/...），响应 {"results": N, "list": [...]}
         fetcher = BangumiFetcher()
-        fetcher.session.post = MagicMock(return_value=JsonResponse({"data": search_items}))
+        fetcher.session.request = MagicMock(return_value=JsonResponse(
+            {"results": len(search_items), "list": search_items}))
         fetcher.get_manga_detail = MagicMock(return_value=None)
         return fetcher
 
@@ -289,7 +291,8 @@ class TestSearchMangaSeriesVolumeFilter:
         """低匹配条目经别名匹配后保留（详情仅用于别名检查，不用于过滤）"""
         search_items = [{"id": 30, "name": "完全无关作品", "name_cn": "", "series": False}]
         fetcher = BangumiFetcher()
-        fetcher.session.post = MagicMock(return_value=JsonResponse({"data": search_items}))
+        fetcher.session.request = MagicMock(return_value=JsonResponse(
+            {"results": len(search_items), "list": search_items}))
         fetcher.get_manga_detail = MagicMock(return_value={
             "id": 30, "volumes": 0, "series": False,
             "infobox": [{"key": "别名", "value": [{"v": "别名目标"}]}],

@@ -59,6 +59,11 @@ class OnboardingDialog(QDialog):
         self.hint_label.setStyleSheet("font-size: 11px; color: #757575;")
         layout.addWidget(self.hint_label)
 
+        # 网络提示：数据源需联网；Bangumi 内置大陆镜像，连不上可本地手填
+        self.network_hint_label = QLabel("数据源需要网络连接；Bangumi 已内置大陆镜像，无法连接时可改用本地手填")
+        self.network_hint_label.setStyleSheet("font-size: 11px; color: #757575;")
+        layout.addWidget(self.network_hint_label)
+
         layout.addSpacing(8)
 
         # 开始使用：确认色，保存配置并关闭

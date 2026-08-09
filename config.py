@@ -29,6 +29,12 @@ DEFAULT_SETTINGS = {
     "default_manga_dir": "",       # 默认漫画目录（留空则启动时提示选择）
     "remember_last_path": True,    # 记住上次路径开关（开启则启动优先用上次目录）
     "first_run_done": False,       # 首次启动轻引导是否已完成（完成后不再弹出）
+    # Bangumi API 镜像列表（官方优先；官方被墙时自动降级到社区镜像）
+    "bangumi_mirrors": [
+        "https://api.bgm.tv",          # 官方（海外/可直连用户）
+        "https://api.bangumi.lol",     # 社区镜像1（大陆可用）
+        "https://bgmapi.anibt.net",    # 社区镜像2（备胎，随时可能下线）
+    ],
 }
 
 
@@ -86,6 +92,7 @@ SETTINGS_ATTR_MAP = {
     "default_manga_dir": "DEFAULT_MANGA_DIR",
     "remember_last_path": "REMEMBER_LAST_PATH",
     "first_run_done": "FIRST_RUN_DONE",
+    "bangumi_mirrors": "BANGUMI_MIRRORS",
 }
 
 
@@ -146,6 +153,12 @@ REMEMBER_LAST_PATH = _user_config.get("remember_last_path",
                                       DEFAULT_SETTINGS["remember_last_path"])
 FIRST_RUN_DONE = _user_config.get("first_run_done",
                                   DEFAULT_SETTINGS["first_run_done"])
+
+# Bangumi API 镜像列表：user_config.json 可覆盖；非法值（非列表/空）回退默认
+_mirrors_cfg = _user_config.get("bangumi_mirrors",
+                                DEFAULT_SETTINGS["bangumi_mirrors"])
+BANGUMI_MIRRORS = _mirrors_cfg if (isinstance(_mirrors_cfg, list) and _mirrors_cfg) \
+    else list(DEFAULT_SETTINGS["bangumi_mirrors"])
 
 # 保存格式 → 目标扩展名（None 表示保持原格式）
 SAVE_FORMAT_EXT = {
