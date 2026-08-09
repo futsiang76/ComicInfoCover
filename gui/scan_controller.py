@@ -28,6 +28,15 @@ def _lock_controls(mw) -> None:
     source_combo = getattr(mw, "source_combo", None)
     if source_combo is not None:
         source_combo.setEnabled(False)
+    # 锁定目录输入/浏览/编辑XML（控件可能不存在，getattr 防御）
+    for attr in ("path_edit", "browse_btn", "edit_xml_btn"):
+        widget = getattr(mw, attr, None)
+        if widget is not None:
+            widget.setEnabled(False)
+    # 扫描期间显示进度条（所有 start 分支统一在此 show）
+    progress_bar = getattr(mw, "progress_bar", None)
+    if progress_bar is not None:
+        progress_bar.show()
 
 
 def _unlock_controls(mw) -> None:
@@ -36,6 +45,11 @@ def _unlock_controls(mw) -> None:
     source_combo = getattr(mw, "source_combo", None)
     if source_combo is not None:
         source_combo.setEnabled(True)
+    # 恢复目录输入/浏览/编辑XML（控件可能不存在，getattr 防御）
+    for attr in ("path_edit", "browse_btn", "edit_xml_btn"):
+        widget = getattr(mw, attr, None)
+        if widget is not None:
+            widget.setEnabled(True)
 
 
 def start_scan(mw):
@@ -107,9 +121,8 @@ def start_scan(mw):
         mw.stop_btn.setEnabled(True)
         mw.progress_bar.setRange(0, 0)  # 不确定进度（后台线程开始时由信号校正）
 
-        start_loading_cat(mw)  # 全匹配扫描等待期显示工作小猫动画
-
         _lock_controls(mw)
+        start_loading_cat(mw)  # 全匹配扫描等待期显示工作小猫动画（进度条已 show，定位准确）
         thread.start()
         return
 
@@ -123,9 +136,8 @@ def start_scan(mw):
     mw.stop_btn.setEnabled(True)
     mw.progress_bar.setRange(0, 0)  # 不确定进度
 
-    start_loading_cat(mw)  # 批量扫描等待期显示工作小猫动画
-
     _lock_controls(mw)
+    start_loading_cat(mw)  # 批量扫描等待期显示工作小猫动画（进度条已 show，定位准确）
     mw.scan_thread.start()
 
 
@@ -198,9 +210,8 @@ def _start_manhuagui_scan(mw, manga_root: str) -> None:
     mw.stop_btn.setEnabled(True)
     mw.progress_bar.setRange(0, 0)  # 不确定进度（后台线程开始时由信号校正）
 
-    start_loading_cat(mw)  # manhuagui 扫描等待期显示工作小猫动画
-
     _lock_controls(mw)
+    start_loading_cat(mw)  # manhuagui 扫描等待期显示工作小猫动画（进度条已 show，定位准确）
     thread.start()
 
 
@@ -249,9 +260,8 @@ def _start_comicvine_scan(mw, manga_root: str) -> None:
     mw.stop_btn.setEnabled(True)
     mw.progress_bar.setRange(0, 0)  # 不确定进度（后台线程开始时由信号校正）
 
-    start_loading_cat(mw)  # ComicVine 扫描等待期显示工作小猫动画
-
     _lock_controls(mw)
+    start_loading_cat(mw)  # ComicVine 扫描等待期显示工作小猫动画（进度条已 show，定位准确）
     thread.start()
 
 
@@ -316,9 +326,8 @@ def _start_manual_match_scan(mw, manga_root: str, manga_value: Optional[str]) ->
     mw.stop_btn.setEnabled(True)
     mw.progress_bar.setRange(0, 0)  # 不确定进度（后台线程开始时由信号校正）
 
-    start_loading_cat(mw)  # 手动匹配扫描等待期显示工作小猫动画
-
     _lock_controls(mw)
+    start_loading_cat(mw)  # 手动匹配扫描等待期显示工作小猫动画（进度条已 show，定位准确）
     thread.start()
 
 

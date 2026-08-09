@@ -194,6 +194,7 @@ def build_scan_tab(mw, tab_widget):
         }
     """)
     browse_btn.clicked.connect(mw.browse_path)
+    mw.browse_btn = browse_btn  # 挂 mw：扫描期间 controller 需锁定
     path_layout.addWidget(browse_btn)
 
     scan_layout.addLayout(path_layout)
@@ -280,7 +281,13 @@ def build_scan_tab(mw, tab_widget):
     main_action_layout.addStretch()
     scan_layout.addLayout(main_action_layout)
 
-    # 进度条
+    # 进度条：外包固定高度容器占位，扫描前隐藏（布局不收缩，无抖动）
+    progress_placeholder = QWidget()
+    progress_placeholder.setFixedHeight(25)
+    progress_layout = QVBoxLayout(progress_placeholder)
+    progress_layout.setContentsMargins(0, 0, 0, 0)
+    progress_layout.setSpacing(0)
+
     mw.progress_bar = QProgressBar()
     mw.progress_bar.setMinimumHeight(25)
     mw.progress_bar.setStyleSheet("""
@@ -295,7 +302,10 @@ def build_scan_tab(mw, tab_widget):
             border-radius: 3px;
         }
     """)
-    scan_layout.addWidget(mw.progress_bar)
+    mw.progress_bar.hide()  # 扫描前不显示；_lock_controls 时 show()
+    progress_layout.addWidget(mw.progress_bar)
+
+    scan_layout.addWidget(progress_placeholder)
 
     # 工作小猫加载动画：挂主窗口最上层（顶层浮层，不被进度条容器截断，鼠标穿透）
     mw.loading_cat_movie = QMovie(  # 引用挂 mw 防 GC
