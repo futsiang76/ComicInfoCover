@@ -24,6 +24,26 @@ from .author_utils import (_clean_author_name, _split_authors,
                             analyze_bangumi_author_types, extract_bangumi_authors,
                             extract_bangumi_authors_by_type, match_author)
 
+# 网页请求浏览器 UA：Cloudflare 挡爬虫 UA（curl/默认 UA 403），必须用完整浏览器 UA
+_WEB_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
+
+def _web_mirror_from_api(api_base: str) -> str:
+    """API 镜像域名 → 网页镜像域名
+
+    映射规则：去 api 前缀（api.bangumi.lol → bangumi.lol）；anibt 特殊
+    （bgmapi.anibt.net → bgmmi.anibt.net）。官方 api.bgm.tv → bgm.tv。
+    """
+    host = api_base.split("://", 1)[-1].rstrip("/")
+    if host.startswith("bgmapi."):
+        host = "bgmmi." + host[len("bgmapi."):]
+    elif host.startswith("api."):
+        host = host[len("api."):]
+    return f"https://{host}"
+
 # 可作 Genre 的 Bangumi tag 白名单（按分类聚合）
 BANGUMI_GENRE_WHITELIST = {
     "分类": ["小说", "画集", "绘本", "公式书", "写真", "其他"],
@@ -188,6 +208,9 @@ class BangumiFetcher:
         # failover 记忆：下一次请求从哪个镜像开始（初始官方，成功后更新）
         self._mirror_index = 0
 
+        # 网页镜像链：由 API 镜像域名派生（去 api 前缀 / bgmapi→bgmmi）
+        self._web_mirrors = [_web_mirror_from_api(b) for b in config.BANGUMI_MIRRORS]
+
         # 网页作者兜底缓存：同一 subject_id 只抓取一次（实例内生效）
         self._web_authors_cache: Dict[int, List[str]] = {}
 
@@ -230,6 +253,7 @@ class BangumiFetcher:
                 if index != self._mirror_index:
                     # 记下可用镜像：下个请求直接从它开始
                     self._mirror_index = index
+                    print(f"✅ Bangumi 已切换镜像: {base}")
                 return response.json()
             except (requests.exceptions.ConnectionError,
                     requests.exceptions.Timeout,
@@ -342,22 +366,35 @@ class BangumiFetcher:
             return []
 
     def _web_search_subject_ids(self, keyword: str, timeout: int = 10) -> list:
-        """网页搜索 Bangumi，从搜索结果页提取 subject ID 列表"""
+        """网页搜索 Bangumi，从搜索结果页提取 subject ID 列表（镜像链）
+
+        镜像链 bgm.tv → bangumi.lol → bgmmi.anibt.net，逐个尝试；第一个
+        成功提取到 subject ID 即返回。全部失败静默降级返回空列表（API
+        搜索为主源，网页只是补充），不打印红色错误。
+        """
         try:
             from urllib.parse import quote
-            url = f"https://bgm.tv/subject_search/{quote(keyword)}?cat=1"
-            resp = self.session.get(url, timeout=timeout, verify=False)
-            resp.raise_for_status()
-            subject_ids = re.findall(r'href="/subject/(\d+)"', resp.text)
-            seen = set()
-            unique = []
-            for sid in subject_ids:
-                if sid not in seen:
-                    seen.add(sid)
-                    unique.append(sid)
-            return unique
+            path = f"/subject_search/{quote(keyword)}?cat=1"
+            for base in self._web_mirrors:
+                url = f"{base}{path}"
+                try:
+                    resp = self.session.get(url, timeout=timeout, verify=False,
+                                            headers={"User-Agent": _WEB_BROWSER_UA})
+                    resp.raise_for_status()
+                    subject_ids = re.findall(r'href="/subject/(\d+)"', resp.text)
+                    if subject_ids:
+                        seen = set()
+                        unique = []
+                        for sid in subject_ids:
+                            if sid not in seen:
+                                seen.add(sid)
+                                unique.append(sid)
+                        return unique
+                except Exception:
+                    continue
+            return []
         except Exception as e:
-            print(f"🔴 网页搜索失败 [{keyword}]: {str(e)[:50]}")
+            print(f"⚠️ 网页搜索不可用 [{keyword}]: {str(e)[:50]}（API 搜索为主源，网页仅补充）")
             return []
 
     def _web_search_fallback(self, keyword: str, author: str = "",
@@ -429,6 +466,10 @@ class BangumiFetcher:
         `作者: <a href="/person/39">CLAMP</a>`。带实例级缓存：同一
         subject_id 只抓取一次；超时/失败返回空列表，不抛异常。
 
+        镜像链 bgm.tv → bangumi.lol → bgmmi.anibt.net，逐个尝试；第一个
+        成功提取到作者即返回。全部失败静默降级返回空列表（API infobox
+        作者为主源，网页只是补充），只打印淡色提示不打印红色错误。
+
         Args:
             subject_id: Bangumi 条目 ID
 
@@ -437,17 +478,25 @@ class BangumiFetcher:
         """
         if subject_id in self._web_authors_cache:
             return self._web_authors_cache[subject_id]
-        try:
-            url = f"https://bgm.tv/subject/{subject_id}"
-            resp = self.session.get(url, timeout=TIMEOUT, verify=False)
-            resp.raise_for_status()
-            # bgm.tv 响应头无 charset，requests 默认按 ISO-8859-1 解码导致中文乱码；
-            # 页面实际为 UTF-8，显式指定编码后再解析作者字段
-            resp.encoding = "utf-8"
-            authors = _parse_web_authors(resp.text)
-        except Exception as e:
-            print(f"🔴 网页作者提取失败 [{subject_id}]: {str(e)[:50]}")
-            authors = []
+        authors = []
+        last_error = None
+        for base in self._web_mirrors:
+            url = f"{base}/subject/{subject_id}"
+            try:
+                resp = self.session.get(url, timeout=TIMEOUT, verify=False,
+                                        headers={"User-Agent": _WEB_BROWSER_UA})
+                resp.raise_for_status()
+                # 响应头无 charset 时 requests 默认按 ISO-8859-1 解码导致中文乱码；
+                # 页面实际为 UTF-8，显式指定编码后再解析作者字段
+                resp.encoding = "utf-8"
+                authors = _parse_web_authors(resp.text)
+                if authors:
+                    break
+            except Exception as e:
+                last_error = e
+                continue
+        if not authors and last_error:
+            print(f"⚠️ 网页作者提取不可用 [{subject_id}]: {str(last_error)[:50]}（API infobox 作者为主源，网页仅补充）")
         self._web_authors_cache[subject_id] = authors
         return authors
 

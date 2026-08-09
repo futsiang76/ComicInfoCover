@@ -144,7 +144,8 @@ class TestFetchWebAuthors:
         fetcher.session.get = MagicMock(return_value=MockResponse("", 500))
         assert fetcher.fetch_web_authors(37953) == []
         assert fetcher.fetch_web_authors(37953) == []
-        assert fetcher.session.get.call_count == 1
+        # 失败也缓存：同一 subject_id 只抓取一次（镜像链 3 个镜像各尝试 1 次）
+        assert fetcher.session.get.call_count == len(fetcher._web_mirrors)
 
 
 class TestExtractResultAuthorsFallback:
