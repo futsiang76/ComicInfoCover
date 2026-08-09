@@ -49,6 +49,7 @@ from .save_handler import save_changes
 from .xml_editor import open_xml_editor, on_edit_xml_clicked
 from .edit_controller import (edit_row, on_results_double_clicked,
                               edit_selected)
+from .onboarding_dialog import OnboardingDialog
 
 
 class MainWindow(QMainWindow):
@@ -100,6 +101,15 @@ class MainWindow(QMainWindow):
             self.path_edit.setText(initial_path)
         else:
             self.path_edit.setPlaceholderText("请选择漫画库目录")
+
+    def maybe_show_onboarding(self) -> None:
+        """首次启动轻引导：first_run_done 未完成时弹出模态引导（主窗口显示后调用）
+
+        点击「开始使用」后写入 first_run_done=true，下次启动不再弹出。
+        """
+        if config.FIRST_RUN_DONE:
+            return
+        OnboardingDialog(self).exec()
 
     def _initial_manga_path(self, settings) -> str:
         """计算启动时的漫画根目录（为空则界面提示选择，不落任何写死路径）

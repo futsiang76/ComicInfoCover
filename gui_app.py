@@ -26,6 +26,9 @@ def main():
     window = MainWindow()
     window.show()
 
+    # 首次启动轻引导：主窗口显示后弹出（未完成时）
+    window.maybe_show_onboarding()
+
     # 运行应用
     sys.exit(app.exec())
 
