@@ -1,5 +1,5 @@
 """主窗口初始化、tab 切换测试"""
-from PyQt6.QtWidgets import QTabWidget, QToolButton
+from PyQt6.QtWidgets import QTabWidget, QPushButton
 
 
 def test_window_title(app):
@@ -18,17 +18,39 @@ def test_default_tab_is_scan(app):
 def test_gear_button_exists(app):
     gear = app.tab_widget.cornerWidget()
     assert gear is not None
-    assert isinstance(gear, QToolButton)
+    assert isinstance(gear, QPushButton)
+    assert gear.text() == "\u2699"
     assert gear.toolTip() == "菜单"
 
 
 def test_gear_menu_has_five_actions(app):
-    gear = app.tab_widget.cornerWidget()
-    assert gear is not None
-    menu = gear.menu()
+    menu = app._gear_menu
     assert menu is not None
     labels = [action.text() for action in menu.actions()]
     assert labels == ["应用设置", "法律声明", "使用说明", "版本", "检查更新"]
+
+
+def test_gear_menu_popup_pos_within_window(app, qtbot):
+    """菜单弹出位置右缘不超出主窗口右边界"""
+    app.show()
+    qtbot.wait(100)
+    gear = app.tab_widget.cornerWidget()
+    pos = app._gear_menu_popup_pos(gear, app._gear_menu)
+    menu_width = app._gear_menu.sizeHint().width()
+    window_right = app.mapToGlobal(app.rect().topRight()).x()
+    assert pos.x() + menu_width <= window_right
+    assert pos.y() >= 0
+
+
+def test_render_markdown_headings_not_plaintext(app):
+    """法律声明/使用说明渲染为 HTML：## 符号消失，标题变大字号加粗"""
+    md = "## 一、软件性质声明\n\n正文 **加粗** 与 [链接](https://example.com)"
+    html = app._render_markdown(md)
+    assert "##" not in html
+    assert "<h2>" in html
+    assert "一、软件性质声明" in html
+    assert "<strong>加粗</strong>" in html
+    assert 'href="https://example.com"' in html
 
 
 def test_close_window_no_crash(app, qtbot):

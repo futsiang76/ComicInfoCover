@@ -12,8 +12,9 @@ def test_gear_button_connected(app):
     gear = app.tab_widget.cornerWidget()
     assert gear is not None
     assert gear.toolTip() == "菜单"
-    assert gear.menu() is not None
-    assert [a.text() for a in gear.menu().actions()] == [
+    menu = app._gear_menu
+    assert menu is not None
+    assert [a.text() for a in menu.actions()] == [
         "应用设置", "法律声明", "使用说明", "版本", "检查更新"]
 
 

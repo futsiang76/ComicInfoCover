@@ -3,3 +3,4 @@ PyQt6
 requests
 thefuzz
 zhconv
+markdown>=3.5

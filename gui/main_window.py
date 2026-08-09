@@ -7,7 +7,7 @@
 import os
 from typing import Dict, List, Optional
 
-from PyQt6.QtCore import Qt, QSettings, QThread, pyqtSignal
+from PyQt6.QtCore import QPoint, Qt, QSettings, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog,
                              QDialogButtonBox, QFileDialog,
@@ -15,7 +15,9 @@ from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog,
                              QMainWindow, QMenu, QMessageBox, QProgressBar,
                              QPushButton, QRadioButton, QTableWidget,
                              QTableWidgetItem, QTabWidget, QTextEdit,
-                             QToolButton, QVBoxLayout, QWidget)
+                             QVBoxLayout, QWidget)
+
+import markdown
 
 import config
 from config import AUTO_TURBO_MATCH, MODE_SKIP_XMLEXIST
@@ -83,21 +85,22 @@ class MainWindow(QMainWindow):
         self.create_scan_tab()
         self.create_results_tab()
 
-        # 齿轮菜单按钮：放在标签栏最右端（空白区），点击弹出下拉菜单
-        gear_btn = QToolButton()
-        gear_btn.setText("\u2699")
+        # 齿轮菜单按钮：恢复原 QPushButton ⚙ 扁平透明观感（可下拉），点击手动弹出菜单
+        gear_btn = QPushButton("\u2699")
+        gear_btn.setFixedSize(26, 22)
         gear_btn.setToolTip("菜单")
-        gear_btn.setArrowType(Qt.ArrowType.DownArrow)
-        gear_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        gear_btn.setFlat(True)
         gear_btn.setFont(QFont("Segoe UI Symbol", 16))
-        gear_btn.setStyleSheet("QToolButton { background: transparent; border: none; padding: 0 6px 0 0; margin: 0; } QToolButton:hover { background: #e0e0e0; border-radius: 4px; } QToolButton::menu-button { border: none; }")
+        gear_btn.setStyleSheet("QPushButton { background: transparent; border: none; padding: 0 6px 0 0; margin: 0; } QPushButton:hover { background: #e0e0e0; border-radius: 4px; }")
         gear_menu = QMenu(gear_btn)
         gear_menu.addAction("应用设置", self._open_settings)
         gear_menu.addAction("法律声明", lambda: self._show_doc_dialog("法律声明", "法律声明.md"))
         gear_menu.addAction("使用说明", lambda: self._show_doc_dialog("使用说明", "使用说明.md"))
         gear_menu.addAction("版本", self._show_about_dialog)
         gear_menu.addAction("检查更新", self._check_update_placeholder)
-        gear_btn.setMenu(gear_menu)
+        self._gear_menu = gear_menu
+        self._gear_btn = gear_btn
+        gear_btn.clicked.connect(lambda: self._popup_gear_menu(gear_btn, gear_menu))
         self.tab_widget.setCornerWidget(gear_btn)
         
         # 启动路径：记住上次路径=开 → 上次路径 > 默认目录；关 → 仅默认目录；均无 → 提示选择
@@ -112,6 +115,43 @@ class MainWindow(QMainWindow):
         """打开应用设置对话框"""
         from gui.settings_dialog import SettingsDialog
         SettingsDialog(self).exec()
+
+    def _gear_menu_popup_pos(self, btn, menu) -> QPoint:
+        """计算菜单弹出全局坐标：默认对齐按钮右缘向下弹出，超出窗口右缘则整体左移
+
+        Returns:
+            QPoint: 菜单左上角全局坐标（保证菜单右缘 ≤ 窗口右缘）
+        """
+        menu_width = menu.sizeHint().width()
+        btn_global = btn.mapToGlobal(btn.rect().topLeft())
+        window_right = self.mapToGlobal(self.rect().topRight()).x()
+        x = btn_global.x() + btn.width() - menu_width
+        if x + menu_width > window_right:
+            x = window_right - menu_width
+        x = max(x, 0)  # 窗口极窄时防止负坐标
+        y = btn_global.y() + btn.height()
+        return QPoint(x, y)
+
+    def _popup_gear_menu(self, btn, menu):
+        """齿轮按钮点击：手动指定菜单弹出位置（菜单右缘不超出主窗口右边界）"""
+        menu.exec(self._gear_menu_popup_pos(btn, menu))
+
+    _MD_CSS = """
+    body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; font-size: 13px; line-height: 1.6; color: #222; }
+    h1 { font-size: 20px; font-weight: bold; margin: 12px 0 8px; }
+    h2 { font-size: 17px; font-weight: bold; margin: 10px 0 6px; }
+    h3 { font-size: 15px; font-weight: bold; margin: 8px 0 4px; }
+    p { margin: 6px 0; }
+    strong { font-weight: bold; }
+    ul, ol { margin: 6px 0; padding-left: 24px; }
+    blockquote { border-left: 3px solid #ccc; margin: 6px 0; padding-left: 12px; color: #555; }
+    a { color: #1a73e8; }
+    """
+
+    def _render_markdown(self, content: str) -> str:
+        """markdown 文本 → 带基础样式的 HTML（标题大字号、正文常规、strong 加粗）"""
+        body = markdown.markdown(content, extensions=["extra"])
+        return f"<html><head><style>{self._MD_CSS}</style></head><body>{body}</body></html>"
 
     def _doc_path(self, filename: str) -> str:
         """返回 docs/ 目录下文档的绝对路径（项目根 docs/）"""
@@ -136,7 +176,8 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(dialog)
         text_edit = QTextEdit()
         text_edit.setReadOnly(True)
-        text_edit.setPlainText(content)
+        # markdown → HTML 渲染：标题大字号加粗、正文常规，文档观感而非源码
+        text_edit.setHtml(self._render_markdown(content))
         layout.addWidget(text_edit)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(dialog.reject)
