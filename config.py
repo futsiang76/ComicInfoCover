@@ -160,6 +160,17 @@ _mirrors_cfg = _user_config.get("bangumi_mirrors",
 BANGUMI_MIRRORS = _mirrors_cfg if (isinstance(_mirrors_cfg, list) and _mirrors_cfg) \
     else list(DEFAULT_SETTINGS["bangumi_mirrors"])
 
+# Bangumi 数据源标识：gui 数据源下拉值 ↔ fetcher 直连域名映射
+# （官方 api.bgm.tv；镜像 api.bangumi.lol，大陆可用）
+BANGUMI_SOURCE_OFFICIAL = "bangumi"
+BANGUMI_SOURCE_MIRROR = "bangumi_mirror"
+
+# 数据源下拉显示名（gui 下拉项 ↔ scan_controller 路由；manhuagui 排最后）
+SOURCE_BANGUMI_TEXT = "Bangumi（官方）"
+SOURCE_BANGUMI_MIRROR_TEXT = "Bangumi 大陆镜像"
+SOURCE_COMICVINE_TEXT = "ComicVine"
+SOURCE_MANHUAGUI_TEXT = "manhuagui"
+
 # 保存格式 → 目标扩展名（None 表示保持原格式）
 SAVE_FORMAT_EXT = {
     "keep": None,   # zip/cbz 原地写；rar/cbr/7z 自动转 .cbz 并保留原文件

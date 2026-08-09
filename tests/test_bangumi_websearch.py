@@ -5,6 +5,8 @@
 import re
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from models.bangumi_fetcher import BangumiFetcher
 
 
@@ -15,7 +17,7 @@ class MockResponse:
         self.status_code = status_code
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise Exception(f"HTTP {self.status_code}")
+            raise requests.exceptions.HTTPError(f"HTTP {self.status_code}")
 
 
 class TestWebSearchSubjectIds:
@@ -54,7 +56,8 @@ class TestWebSearchSubjectIds:
 
     def test_returns_empty_on_network_error(self):
         fetcher = BangumiFetcher()
-        fetcher.session.get = MagicMock(side_effect=Exception("timeout"))
+        fetcher.session.get = MagicMock(
+            side_effect=requests.exceptions.ConnectionError("timeout"))
         ids = fetcher._web_search_subject_ids("test")
         assert ids == []
 

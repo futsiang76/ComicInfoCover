@@ -10,6 +10,9 @@ from typing import Dict, List, Optional, Tuple
 
 from PyQt6.QtWidgets import QMessageBox
 
+from config import (SOURCE_BANGUMI_TEXT, SOURCE_COMICVINE_TEXT,
+                    SOURCE_MANHUAGUI_TEXT)
+
 from .edit_dialog import EditDialog
 from .scan_tab import apply_source_mode_constraint
 from .scan_thread import ScanThread
@@ -29,7 +32,7 @@ def _lock_controls(mw) -> None:
 
 def _unlock_controls(mw) -> None:
     """扫描结束/出错后恢复模式与数据源选择（受限源下仍保持其模式约束）"""
-    apply_source_mode_constraint(mw, getattr(mw, "selected_source", "Bangumi（默认）"))
+    apply_source_mode_constraint(mw, getattr(mw, "selected_source", SOURCE_BANGUMI_TEXT))
     source_combo = getattr(mw, "source_combo", None)
     if source_combo is not None:
         source_combo.setEnabled(True)
@@ -46,12 +49,12 @@ def start_scan(mw):
         QMessageBox.warning(mw, "警告", "指定的目录不存在")
         return
 
-    # 数据源路由：其它网络来源 A / ComicVine 走「多系列拦截 → 单系列扫描」
-    source = getattr(mw, "selected_source", "Bangumi（默认）")
-    if source == "其它网络来源 A":
+    # 数据源路由：manhuagui / ComicVine 走「多系列拦截 → 单系列扫描」
+    source = getattr(mw, "selected_source", SOURCE_BANGUMI_TEXT)
+    if source == SOURCE_MANHUAGUI_TEXT:
         _start_manhuagui_scan(mw, manga_root)
         return
-    if source == "ComicVine":
+    if source == SOURCE_COMICVINE_TEXT:
         _start_comicvine_scan(mw, manga_root)
         return
 
@@ -161,7 +164,7 @@ def _start_manhuagui_scan(mw, manga_root: str) -> None:
     if len(folders) > 1:
         QMessageBox.warning(
             mw, "数据源限制",
-            "其它网络来源 A 源只支持单系列扫描，请拆分成单系列目录或用 Bangumi 源",
+            "manhuagui 源只支持单系列扫描，请拆分成单系列目录或用 Bangumi 源",
         )
         return
 
@@ -173,7 +176,7 @@ def _start_manhuagui_scan(mw, manga_root: str) -> None:
     # 3.5 清空日志/结果（主线程操作，对应原 _run_manhuagui_single_scan 的初始化）
     mw.log_text.clear()
     mw.log_text.append(f"开始扫描: {manga_root}")
-    mw.log_text.append("数据源: 其它网络来源 A")
+    mw.log_text.append(f"数据源: {SOURCE_MANHUAGUI_TEXT}")
     mw.log_text.append(f"Manga设置: {manga_value}")
     mw.scan_results = []
     mw.update_results_table()

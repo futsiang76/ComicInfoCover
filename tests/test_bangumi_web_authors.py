@@ -9,6 +9,8 @@
 
 from unittest.mock import MagicMock
 
+import requests
+
 from models.bangumi_fetcher import BangumiFetcher, _parse_web_authors
 from processors.search_handler import SearchHandler
 
@@ -36,7 +38,7 @@ class MockResponse:
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise Exception(f"HTTP {self.status_code}")
+            raise requests.exceptions.HTTPError(f"HTTP {self.status_code}")
 
 
 class EncodingAwareResponse:
@@ -62,7 +64,7 @@ class EncodingAwareResponse:
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise Exception(f"HTTP {self.status_code}")
+            raise requests.exceptions.HTTPError(f"HTTP {self.status_code}")
 
 
 class TestParseWebAuthors:
@@ -129,7 +131,8 @@ class TestFetchWebAuthors:
 
     def test_returns_empty_on_network_error(self):
         fetcher = BangumiFetcher()
-        fetcher.session.get = MagicMock(side_effect=Exception("timeout"))
+        fetcher.session.get = MagicMock(
+            side_effect=requests.exceptions.ConnectionError("timeout"))
         assert fetcher.fetch_web_authors(37953) == []
 
     def test_cache_same_id_fetches_once(self):
@@ -144,8 +147,8 @@ class TestFetchWebAuthors:
         fetcher.session.get = MagicMock(return_value=MockResponse("", 500))
         assert fetcher.fetch_web_authors(37953) == []
         assert fetcher.fetch_web_authors(37953) == []
-        # 失败也缓存：同一 subject_id 只抓取一次（镜像链 3 个镜像各尝试 1 次）
-        assert fetcher.session.get.call_count == len(fetcher._web_mirrors)
+        # 失败也缓存：同一 subject_id 只抓取一次（失败即静默降级，不重试）
+        assert fetcher.session.get.call_count == 1
 
 
 class TestExtractResultAuthorsFallback:

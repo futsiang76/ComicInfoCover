@@ -2,6 +2,9 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QButtonGroup, QLabel, QLineEdit, QPushButton, QTextEdit
 
+from config import (SOURCE_BANGUMI_MIRROR_TEXT, SOURCE_BANGUMI_TEXT,
+                    SOURCE_COMICVINE_TEXT, SOURCE_MANHUAGUI_TEXT)
+
 
 def test_mode_radio_buttons_exist(app):
     assert isinstance(app.mode_group, QButtonGroup)
@@ -116,8 +119,8 @@ def test_source_constraint_manhuagui(app):
     """manhuagui 源：固定全匹配 + 隐藏补漏/修正/手动匹配"""
     from gui.scan_tab import _on_source_changed
 
-    _on_source_changed(app, "其它网络来源 A")
-    assert app.selected_source == "其它网络来源 A"
+    _on_source_changed(app, SOURCE_MANHUAGUI_TEXT)
+    assert app.selected_source == SOURCE_MANHUAGUI_TEXT
     assert app._mode_radios[0].isChecked()
     assert app._mode_radios[0].isVisible()
     for val in (1, 2, 3):
@@ -139,12 +142,12 @@ def test_source_constraint_comicvine(app):
 
 
 def test_source_switch_back_to_bangumi_restores(app):
-    """切回 Bangumi：模式与无人值守恢复"""
+    """切回 Bangumi：模式与无人值守恢复（官方/镜像均属非受限源）"""
     from gui.scan_tab import _on_source_changed
 
-    _on_source_changed(app, "其它网络来源 A")
-    _on_source_changed(app, "Bangumi（默认）")
-    assert app.selected_source == "Bangumi（默认）"
+    _on_source_changed(app, SOURCE_MANHUAGUI_TEXT)
+    _on_source_changed(app, SOURCE_BANGUMI_TEXT)
+    assert app.selected_source == SOURCE_BANGUMI_TEXT
     for val in (0, 1, 2, 3):
         assert app._mode_radios[val].isVisible()
     assert app.auto_turbo_check.isVisible()
@@ -163,3 +166,40 @@ def test_scan_controls_locked_during_scan(app):
     for btn in app.mode_group.buttons():
         assert btn.isEnabled()
     assert app.source_combo.isEnabled()
+
+
+class TestGeoDetectDefaultSource:
+    """IP 检测完成 → 默认数据源联动（测试不发起真实网络请求）"""
+
+    def test_cn_detected_switches_to_mirror(self, app):
+        """检测大陆 → 默认切「Bangumi 大陆镜像」"""
+        from gui import source_detect
+
+        source_detect._on_geo_detected(app, True)
+        assert app.source_combo.currentText() == SOURCE_BANGUMI_MIRROR_TEXT
+        assert app.selected_source == SOURCE_BANGUMI_MIRROR_TEXT
+
+    def test_non_cn_keeps_official(self, app):
+        """检测非大陆 → 保持官方默认"""
+        from gui import source_detect
+
+        source_detect._on_geo_detected(app, False)
+        assert app.source_combo.currentText() == SOURCE_BANGUMI_TEXT
+        assert app.selected_source == SOURCE_BANGUMI_TEXT
+
+    def test_detect_failure_keeps_official(self, app):
+        """检测失败（None）→ 保持官方默认"""
+        from gui import source_detect
+
+        source_detect._on_geo_detected(app, None)
+        assert app.source_combo.currentText() == SOURCE_BANGUMI_TEXT
+        assert app.selected_source == SOURCE_BANGUMI_TEXT
+
+    def test_user_touched_source_not_overridden(self, app):
+        """用户手动切过源 → 检测完成不覆盖用户选择"""
+        from gui import source_detect
+
+        app._source_user_touched = True
+        source_detect._on_geo_detected(app, True)
+        assert app.source_combo.currentText() == SOURCE_BANGUMI_TEXT
+        assert app.selected_source == SOURCE_BANGUMI_TEXT

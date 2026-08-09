@@ -486,7 +486,11 @@ def test_create_result_dict_comicvine_web(tmp_path):
 
 
 def test_source_combo_has_comicvine(app):
-    """扫描页数据源下拉框包含 ComicVine 且默认选中 Bangumi"""
+    """扫描页数据源下拉框：官方 → 镜像 → ComicVine → manhuagui（默认官方）"""
+    from config import (SOURCE_BANGUMI_MIRROR_TEXT, SOURCE_BANGUMI_TEXT,
+                        SOURCE_COMICVINE_TEXT, SOURCE_MANHUAGUI_TEXT)
+
     items = [app.source_combo.itemText(i) for i in range(app.source_combo.count())]
-    assert items == ["Bangumi（默认）", "ComicVine", "其它网络来源 A"]
-    assert app.selected_source == "Bangumi（默认）"
+    assert items == [SOURCE_BANGUMI_TEXT, SOURCE_BANGUMI_MIRROR_TEXT,
+                     SOURCE_COMICVINE_TEXT, SOURCE_MANHUAGUI_TEXT]
+    assert app.selected_source == SOURCE_BANGUMI_TEXT

@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
 
 import config
 
-HINT_TEXT = "Bangumi Token：可选；ComicVine Key：可选备用源"
+HINT_TEXT = "数据源需要网络连接；软件会自动检测网络环境选择 Bangumi 官方或大陆镜像"
 
 
 class OnboardingDialog(QDialog):

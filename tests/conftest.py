@@ -19,6 +19,8 @@ def app(qtbot, monkeypatch):
     from gui.main_window import MainWindow
 
     # 隔离 QSettings：不让测试读到真实用户配置（last_manga_path 等）
+    # 单元测试不发起真实 IP 检测网络请求（source_detect 默认开启）
+    monkeypatch.setattr("gui.source_detect.AUTO_GEO_DETECT", False)
     monkeypatch.setattr(
         "gui.main_window.QSettings",
         lambda org, app_name: type(

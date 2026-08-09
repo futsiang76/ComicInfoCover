@@ -136,10 +136,10 @@ def _make_mw(selected_source):
 
 
 def test_xml_options_html_manhuagui():
-    """selected_source=其它网络来源 A → 渲染文本含显示名"""
-    html = _build_xml_options_html(_make_mw("其它网络来源 A"))
-    assert "重新从其它网络来源 A获取信息并生成新的XML文件" in html
-    assert "不进行其它网络来源 A搜索" in html
+    """selected_source=manhuagui → 渲染文本含显示名"""
+    html = _build_xml_options_html(_make_mw("manhuagui"))
+    assert "重新从manhuagui获取信息并生成新的XML文件" in html
+    assert "不进行manhuagui搜索" in html
 
 
 def test_xml_options_html_comicvine():
@@ -150,11 +150,11 @@ def test_xml_options_html_comicvine():
 
 
 def test_xml_options_html_bangumi_default():
-    """selected_source=Bangumi（默认） → 渲染文本显示 Bangumi（去掉默认后缀）"""
-    html = _build_xml_options_html(_make_mw("Bangumi（默认）"))
+    """selected_source=Bangumi（官方） → 渲染文本显示 Bangumi（去掉括号后缀）"""
+    html = _build_xml_options_html(_make_mw("Bangumi（官方）"))
     assert "重新从Bangumi获取信息并生成新的XML文件" in html
     assert "不进行Bangumi搜索" in html
-    assert "Bangumi（默认）" not in html
+    assert "Bangumi（官方）" not in html
 
 
 def test_xml_options_html_mw_none_defaults_bangumi():
@@ -168,9 +168,9 @@ def test_xml_options_html_source_combo_fallback():
     """无 selected_source 时回退 source_combo.currentText()"""
     class FakeCombo:
         def currentText(self):
-            return "其它网络来源 A"
+            return "manhuagui"
 
     mw = type("FakeMw", (), {"source_combo": FakeCombo()})()
     html = _build_xml_options_html(mw)
-    assert "重新从其它网络来源 A获取信息并生成新的XML文件" in html
+    assert "重新从manhuagui获取信息并生成新的XML文件" in html
 

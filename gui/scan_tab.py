@@ -13,51 +13,14 @@ from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QGroupBox,
                              QPushButton, QRadioButton, QTextEdit, QVBoxLayout,
                              QWidget)
 
-from config import AUTO_TURBO_MATCH, MODE_SKIP_XMLEXIST
+from config import (AUTO_TURBO_MATCH, MODE_SKIP_XMLEXIST,
+                    SOURCE_BANGUMI_MIRROR_TEXT, SOURCE_BANGUMI_TEXT,
+                    SOURCE_COMICVINE_TEXT, SOURCE_MANHUAGUI_TEXT)
 
+from . import source_detect
+from .scan_mode import (MODE_CONSTRAINED_SOURCES, MODE_DESCRIPTIONS,
+                        _on_source_changed, apply_source_mode_constraint)
 from .utils import SmoothMovieLabel
-
-
-MODE_CONSTRAINED_SOURCES = ("其它网络来源 A", "ComicVine")
-
-MODE_DESCRIPTIONS = {
-    0: "逐文件夹匹配 Bangumi，匹配失败时弹出选择窗口。速度最慢但结果最准确。",
-    1: "跳过已有 XML 的文件夹，只处理没有 XML 的新文件夹，补齐缺失的 XML 信息。",
-    2: "只处理已有 XML 的文件夹，修正错误数据。不处理没有 XML 的新文件夹。",
-    3: "人工到 Bangumi 查询编号，输入 Bangumi ID 后扫描。适合需要人工确认匹配的系列，可处理多个系列。",
-}
-
-
-def _on_source_changed(mw, text: str) -> None:
-    """数据源下拉框变化：记录选中源并联动模式控件显隐"""
-    mw.selected_source = text
-    apply_source_mode_constraint(mw, text)
-
-
-def apply_source_mode_constraint(mw, source: str) -> None:
-    """数据源联动：manhuagui/ComicVine 固定全匹配模式并隐藏受限控件；Bangumi 恢复
-
-    作为数据源切换与扫描结束解锁的共用入口（scan_controller 恢复时也调用），
-    保证受限源下非全匹配模式控件始终不可见/不可用。
-    """
-    constrained = source in MODE_CONSTRAINED_SOURCES
-    if constrained:
-        mw._mode_radios[0].setChecked(True)  # 固定全匹配模式
-        mw.mode_description_label.setText(MODE_DESCRIPTIONS[0])
-    for val, radio in mw._mode_radios.items():
-        hidden = constrained and val != 0
-        radio.setVisible(not hidden)
-        radio.setEnabled(not hidden)
-    if constrained:
-        # 无人值守与受限模式互斥，切源时强制复位
-        mw.auto_turbo_check.setChecked(False)
-        mw.auto_turbo_check.hide()
-        mw.auto_turbo_desc.hide()
-    else:
-        # 非受限：无人值守显隐跟随当前模式（对齐 _on_mode_changed）
-        show_auto_turbo = mw.mode_group.checkedId() == 0
-        mw.auto_turbo_check.setVisible(show_auto_turbo)
-        mw.auto_turbo_desc.setVisible(show_auto_turbo)
 
 
 def build_scan_tab(mw, tab_widget):
@@ -178,7 +141,7 @@ def build_scan_tab(mw, tab_widget):
     mode_group.setLayout(mode_layout)
     layout.addWidget(mode_group)
 
-    # 数据源选择：Bangumi（默认）/ manhuagui / ComicVine，选中后走对应单系列扫描
+    # 数据源选择：Bangumi（官方）→ 大陆镜像 → ComicVine → manhuagui（最后）
     source_group = QGroupBox("数据源")
     source_layout = QHBoxLayout()
     source_layout.addWidget(QLabel("选择数据源:"))
@@ -186,10 +149,13 @@ def build_scan_tab(mw, tab_widget):
     # 配色对齐「漫画根目录」路径输入框（绿色主题）
     mw.source_combo.setStyleSheet("border: 2px solid #4CAF50; padding: 4px; font-size: 13px; background-color: #f0fff0;")
     mw.source_combo.setMinimumWidth(140)
-    mw.source_combo.addItems(["Bangumi（默认）", "ComicVine", "其它网络来源 A"])
+    mw.source_combo.addItems([SOURCE_BANGUMI_TEXT, SOURCE_BANGUMI_MIRROR_TEXT,
+                              SOURCE_COMICVINE_TEXT, SOURCE_MANHUAGUI_TEXT])
     mw.source_combo.setCurrentIndex(0)
-    mw.selected_source = "Bangumi（默认）"
+    mw.selected_source = SOURCE_BANGUMI_TEXT
     mw.source_combo.currentTextChanged.connect(lambda text: _on_source_changed(mw, text))
+    # 用户手动切源标记：IP 检测完成时不覆盖用户选择
+    mw.source_combo.activated.connect(lambda _idx: setattr(mw, "_source_user_touched", True))
     source_layout.addWidget(mw.source_combo)
     source_layout.addStretch()
     source_group.setLayout(source_layout)
@@ -368,7 +334,11 @@ def build_scan_tab(mw, tab_widget):
     layout.addWidget(log_group)
 
     # 初始数据源为 Bangumi：应用一次约束以同步无人值守显隐（默认全匹配显示）
-    apply_source_mode_constraint(mw, "Bangumi（默认）")
+    apply_source_mode_constraint(mw, SOURCE_BANGUMI_TEXT)
+
+    # 后台检测出口 IP：大陆 → 默认镜像；非大陆/失败 → 保持官方（不阻塞 UI）
+    if source_detect.AUTO_GEO_DETECT:
+        source_detect.start_geo_detect(mw)
 
     mw.tab_widget.addTab(scan_tab, "📁 扫描")
 

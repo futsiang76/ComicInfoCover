@@ -2,10 +2,14 @@
 # -*- coding: utf-8 -*-
 """
 Bangumi API封装模块 - 处理所有Bangumi相关功能
+
+数据源直连（官方 api.bgm.tv / 镜像 api.bangumi.lol，无自动 failover）；
+网页兜底跟随所选数据源。辅助逻辑拆分到 bangumi_* 子模块，本文件仅保留
+BangumiFetcher 类并统一导出。
 """
 
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from urllib.parse import quote
 
 import requests
@@ -19,178 +23,37 @@ from config import FUZZ_THRESHOLD, SHOW_TOP_N, TIMEOUT
 # 禁用SSL警告（仅用于开发环境）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# ---- 子模块统一导出（旧 import 路径兼容，各模块见自身 docstring）----
+from .bangumi_comicinfo import build_comicinfo
+from .bangumi_genre import BANGUMI_GENRE_WHITELIST, extract_bangumi_genre
+from .bangumi_search_parse import _parse_search_response
+from .bangumi_source import (_ACTIVE_SOURCE, _WEB_BROWSER_UA, _api_base_for_source,
+                             _web_mirror_from_api, get_active_bangumi_source,
+                             set_active_bangumi_source)
+from .bangumi_volume_filter import (_VOLUME_MARKER_RE, _filter_series_volumes,
+                                    _has_volume_marker)
+from .bangumi_web_parse import (_PERSON_LINK_RE, _WEB_AUTHOR_FIELD_RE,
+                                _WEB_AUTHOR_TIPS, _parse_web_authors)
 
-from .author_utils import (_clean_author_name, _split_authors,
-                            analyze_bangumi_author_types, extract_bangumi_authors,
-                            extract_bangumi_authors_by_type, match_author)
-
-# 网页请求浏览器 UA：Cloudflare 挡爬虫 UA（curl/默认 UA 403），必须用完整浏览器 UA
-_WEB_BROWSER_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-)
-
-
-def _web_mirror_from_api(api_base: str) -> str:
-    """API 镜像域名 → 网页镜像域名
-
-    映射规则：去 api 前缀（api.bangumi.lol → bangumi.lol）；anibt 特殊
-    （bgmapi.anibt.net → bgmmi.anibt.net）。官方 api.bgm.tv → bgm.tv。
-    """
-    host = api_base.split("://", 1)[-1].rstrip("/")
-    if host.startswith("bgmapi."):
-        host = "bgmmi." + host[len("bgmapi."):]
-    elif host.startswith("api."):
-        host = host[len("api."):]
-    return f"https://{host}"
-
-# 可作 Genre 的 Bangumi tag 白名单（按分类聚合）
-BANGUMI_GENRE_WHITELIST = {
-    "分类": ["小说", "画集", "绘本", "公式书", "写真", "其他"],
-    "来源": ["游戏改", "小说改", "动画改", "影视改"],  # 移除 原创、漫画改（非类别）
-    "题材": ["热血", "冒险", "魔幻", "神鬼", "搞笑", "萌系", "爱情", "科幻", "魔法",
-             "格斗", "武侠", "机战", "战争", "竞技", "体育", "校园", "生活", "励志",
-             "历史", "伪娘", "宅男", "腐男", "腐女", "耽美", "百合", "后宫", "治愈",
-             "美食", "推理", "悬疑", "恐怖", "四格", "职场", "侦探", "社会", "音乐",
-             "舞蹈", "杂志", "黑道", "穿越", "玄幻", "惊悚", "乙女"],
-    "受众": ["少年", "少女", "青年", "BL", "一般向", "GL", "名著", "儿童", "女性", "TL"],
-}
-
-
-def extract_bangumi_genre(detail: Dict) -> str:
-    """从 Bangumi API tags 提取 Genre：与白名单比对，按 tags 出现顺序去重
-
-    Returns:
-        str: 命中白名单的标签，用 ", " 分隔；无命中返回空字符串
-    """
-    api_tags = [tag["name"] for tag in detail.get("tags", [])]
-    genre = []
-    seen = set()
-    for tag in api_tags:
-        if tag in seen:
-            continue
-        for category in BANGUMI_GENRE_WHITELIST.values():
-            if tag in category:
-                genre.append(tag)
-                seen.add(tag)
-                break
-    return ", ".join(genre) if genre else ""
-
-
-# 「卷号标记」正则：括号数字 / 中文卷册话 / 西文卷标记（不区分大小写）
-# 注：中文卷册话用 [1-9]\d* 排除「第0卷」——第0卷属一卷全特殊卷（如 进击的巨人 第0卷），
-# 按用户实测结论应保留，不视为系列单卷标记
-_VOLUME_MARKER_RE = re.compile(
-    r"[（(]\s*\d+\s*[）)]"            # 括号数字：(1) (2) （3）
-    r"|第\s*[1-9]\d*\s*[卷册话]"       # 中文卷册话：第1卷 / 第2册 / 第3话
-    r"|(?:vol\.?\s*\d+|#\d+|V\d+)",   # 西文卷标记：Vol.1 / Vol 1 / #1 / V1
-    re.IGNORECASE,
-)
-
-
-def _has_volume_marker(name: str) -> bool:
-    """判断名称是否带「卷号标记」（系列单卷的形态特征）
-
-    匹配模式（name 或 name_cn 任一命中即算带标记）：
-    - 括号数字：(1) (2) （3）
-    - 中文卷册话：第1卷 / 第2册 / 第3话（第0卷不匹配，属一卷全特殊卷）
-    - 西文卷标记：Vol.1 / Vol 1 / #1 / V1（不区分大小写）
-
-    Args:
-        name: 作品名称（name 或 name_cn）
-
-    Returns:
-        bool: True 表示名称带卷号标记
-    """
-    if not name:
-        return False
-    return bool(_VOLUME_MARKER_RE.search(name))
-
-
-def _filter_series_volumes(items: List[Dict]) -> List[Dict]:
-    """逐条过滤：剔除 series=False 且名称带「卷号标记」的系列单卷条目
-
-    最终规则（用户拍板 2026-08-05，替代结果数阈值启发式）：
-    - series=True（系列条目）→ 保留
-    - series=False 且名称带卷号标记（系列的单卷）→ 过滤
-    - series=False 但无卷号标记（外传/原画集/设定集/一卷全独立作品）→ 保留
-
-    series 字段由搜索列表（v0/search/subjects）直接提供，无需调详情接口；
-    每个条目独立判定，不依赖结果集大小。卷号标记见 _has_volume_marker。
-
-    Args:
-        items: 搜索结果列表（元素含 series/name/name_cn 字段）
-
-    Returns:
-        List[Dict]: 过滤后的结果列表
-    """
-    return [item for item in items
-            if item.get("series", False) is not False
-            or not (_has_volume_marker(item.get("name") or "")
-                    or _has_volume_marker(item.get("name_cn") or ""))]
-
-
-# ---- 网页作者兜底：老条目 API infobox 无作者字段时，抓网页信息栏提取 ----
-# 作者类 tip 字段（与 extract_bangumi_authors 的 author_types 对应）
-_WEB_AUTHOR_TIPS = (
-    "作者|作画|原作|脚本|监督|导演|原著|插画"
-    "|ストーリー|コミカライズ|原案|監督|演出|イラスト|キャラクターデザイン"
-    "|メカニックデザイン|オリジナルキャラクターデザイン"
-)
-# 信息栏字段：<span class="tip">作者: </span> 后接该字段内容（到下一 tip 或 li 结束）
-_WEB_AUTHOR_FIELD_RE = re.compile(
-    r'<span class="tip">\s*(' + _WEB_AUTHOR_TIPS + r')\s*[:：]?\s*</span>'
-    r'(.*?)(?=<span class="tip">|</li>|</ul>|$)',
-    re.DOTALL | re.IGNORECASE,
-)
-# 字段内人物链接：<a href="/person/39" class="l">CLAMP</a>
-_PERSON_LINK_RE = re.compile(r'<a[^>]+href="/person/\d+"[^>]*>(.*?)</a>', re.DOTALL)
-
-
-def _parse_web_authors(html: str) -> List[str]:
-    """从 Bangumi 网页信息栏 HTML 提取作者名列表
-
-    匹配所有作者类 tip 字段（作者/原作/作画 等），提取字段内全部 /person/
-    人物链接文本；同名去重保序。无匹配返回空列表。
-    """
-    if not html:
-        return []
-    authors = []
-    for match in _WEB_AUTHOR_FIELD_RE.finditer(html):
-        for name in _PERSON_LINK_RE.findall(match.group(2)):
-            name = re.sub(r'<[^>]+>', '', name).strip()
-            if name:
-                authors.append(name)
-    return list(dict.fromkeys(authors))
-
-
-def _parse_search_response(data: Dict) -> List[Dict]:
-    """解析 v2 GET 搜索响应，并做字段映射对齐 v0 POST 契约
-
-    v2 GET {base}/search/subject/{kw} 响应：
-        {"results": <总数 int>, "list": [...]}
-    - 真实条目在 list 字段（results 是 int 总数，非列表）
-    - 条目字段与 v0 POST 不同（v0: data[].name/name_cn；v2: list[].name/name_cn）
-
-    返回的条目保留后续处理所需字段（id/name/name_cn/summary/images/
-    date/country/infobox/volumes 等），images 归一为可能缺失的安全访问。
-    """
-    items = data.get("list", [])
-    if not isinstance(items, list):
-        return []
-    results = []
-    for raw in items:
-        if not isinstance(raw, dict):
-            continue
-        item = dict(raw)
-        # images 缺失时补空 dict，保持后续 .get("large"/"common") 安全
-        item.setdefault("images", {})
-        results.append(item)
-    return results
+# author_utils 原模块级导出（包装方法委托对象，兼容外部引用）
+from .author_utils import (extract_bangumi_authors,
+                           extract_bangumi_authors_by_type, match_author)
 
 
 class BangumiFetcher:
-    def __init__(self):
+    def __init__(self, source: Optional[str] = None):
+        """按数据源直连对应域名（默认跟随模块级当前源，官方 api.bgm.tv / 镜像 api.bangumi.lol）
+
+        Args:
+            source: 数据源标识（config.BANGUMI_SOURCE_OFFICIAL / _MIRROR）；
+                    缺省用模块级当前源（由 gui 按用户选择设置）
+        """
+        # 动态读取模块级当前源（from import 会绑定旧值，见 set_active_bangumi_source）
+        self._source = source or get_active_bangumi_source()
+        self._base_url = _api_base_for_source(self._source)
+        # 网页兜底域名由 API 域名派生，跟随同一数据源（官方 bgm.tv / 镜像 bangumi.lol）
+        self._web_base = _web_mirror_from_api(self._base_url)
+
         self.session = requests.Session()
         self.session.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -205,24 +68,16 @@ class BangumiFetcher:
         # 禁用SSL证书验证（解决HTTPS连接问题）
         self.session.verify = False
 
-        # failover 记忆：下一次请求从哪个镜像开始（初始官方，成功后更新）
-        self._mirror_index = 0
-
-        # 网页镜像链：由 API 镜像域名派生（去 api 前缀 / bgmapi→bgmmi）
-        self._web_mirrors = [_web_mirror_from_api(b) for b in config.BANGUMI_MIRRORS]
-
         # 网页作者兜底缓存：同一 subject_id 只抓取一次（实例内生效）
         self._web_authors_cache: Dict[int, List[str]] = {}
 
     def _request_json(self, method: str, path: str,
                       params: Optional[Dict] = None,
                       json_payload: Optional[Dict] = None) -> Dict:
-        """带镜像 failover 的 JSON 请求
+        """按当前数据源直连对应 base_url 的 JSON 请求（无自动 failover）
 
-        从上次成功镜像（初始官方）开始，逐个尝试 config.BANGUMI_MIRRORS：
-        - 网络错误（超时/连接/5xx）→ 立即切下一个镜像，不做传输层重试
-        - 成功 → 记录该镜像为下次请求的起始点（避免重复撞被墙的官方）
-        - 全部失败 → 抛最后一次异常（由调用方处理）
+        失败打印「Bangumi 镜像不可用」级别提示后立即抛出，不自动切换数据源；
+        网络类错误不重试。
 
         Args:
             method: HTTP 方法（"GET"/"POST"）
@@ -234,40 +89,27 @@ class BangumiFetcher:
             Dict: 响应 JSON
 
         Raises:
-            requests.exceptions.RequestException: 全部镜像失败时抛出最后一次异常
+            requests.exceptions.RequestException: 网络/HTTP 错误（原样抛出）
         """
-        mirrors = config.BANGUMI_MIRRORS
-        if not mirrors:
-            raise requests.exceptions.RequestException("BANGUMI_MIRRORS 为空")
-        last_error: Optional[requests.exceptions.RequestException] = None
-        start = self._mirror_index % len(mirrors)
-        for offset in range(len(mirrors)):
-            index = (start + offset) % len(mirrors)
-            base = mirrors[index]
-            try:
-                response = self.session.request(
-                    method, base + path, params=params, json=json_payload,
-                    timeout=TIMEOUT, verify=False,
-                )
-                response.raise_for_status()
-                if index != self._mirror_index:
-                    # 记下可用镜像：下个请求直接从它开始
-                    self._mirror_index = index
-                    print(f"✅ Bangumi 已切换镜像: {base}")
-                return response.json()
-            except (requests.exceptions.ConnectionError,
-                    requests.exceptions.Timeout,
-                    requests.exceptions.HTTPError) as e:
-                last_error = e
-                print(f"⚠️  Bangumi 镜像不可用 [{base}{path}]: {str(e)[:50]}")
-        # 全挂才报错（循环内必有失败才会走到这里，last_error 不会为 None）
-        raise last_error
+        try:
+            response = self.session.request(
+                method, self._base_url + path, params=params, json=json_payload,
+                timeout=TIMEOUT, verify=False,
+            )
+            response.raise_for_status()
+            return response.json()
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.Timeout,
+                requests.exceptions.HTTPError) as e:
+            print(f"⚠️    Bangumi 镜像不可用 [{self._base_url}{path}]: {str(e)[:50]}")
+            raise
 
     def search_manga(self, keyword: str, folder_info: Optional[Dict] = None) -> List[Dict]:
         """搜索漫画，返回所有匹配结果（前10个）
 
         统一走 v2 GET {base}/search/subject/{keyword}（官方与镜像均支持，
-        镜像不支持旧 POST /v0/search/subjects）；failover 由 _request_json 处理。
+        镜像不支持旧 POST /v0/search/subjects）；直连所选数据源域名，
+        不做自动 failover。
         """
         try:
             keyword_cn = convert(keyword, "zh-cn")
@@ -284,20 +126,20 @@ class BangumiFetcher:
             results = _filter_series_volumes(results)
 
             details_cache: Dict[int, Optional[Dict]] = {}  # 详情缓存：复用别名检查的详情，避免重复请求
-            
+
             # 按作品名匹配度排序（忽略英文大小写）
             scored_results = []
             for item in results:
                 title_cn = convert(item.get("name_cn", ""), "zh-cn")
                 title_ori = convert(item.get("name", ""), "zh-cn")
-                
+
                 # 首先尝试主标题匹配
                 main_score = max(
                     fuzz.ratio(title_cn.lower(), keyword_cn.lower()),
                     fuzz.partial_ratio(title_cn.lower(), keyword_cn.lower()),
                     fuzz.ratio(title_ori.lower(), keyword_cn.lower())
                 )
-                
+
                 # 如果主标题匹配度不够，尝试匹配别名
                 final_score = main_score
                 if main_score < FUZZ_THRESHOLD:
@@ -333,11 +175,11 @@ class BangumiFetcher:
                                             print(f"💡 通过别名匹配: {alias_text} (匹配度: {final_score}%)")
                                     break
                     except Exception as e:
-                        print(f"⚠️  获取详情失败 [{item['id']}]: {str(e)[:30]}")
-                
+                        print(f"⚠️   获取详情失败 [{item['id']}]: {str(e)[:30]}")
+
                 if final_score >= FUZZ_THRESHOLD:
                     scored_results.append((final_score, item))
-            
+
             # 按匹配度降序排列
             scored_results.sort(key=lambda x: x[0], reverse=True)
 
@@ -366,36 +208,27 @@ class BangumiFetcher:
             return []
 
     def _web_search_subject_ids(self, keyword: str, timeout: int = 10) -> list:
-        """网页搜索 Bangumi，从搜索结果页提取 subject ID 列表（镜像链）
+        """网页搜索 Bangumi，从搜索结果页提取 subject ID 列表
 
-        镜像链 bgm.tv → bangumi.lol → bgmmi.anibt.net，逐个尝试；第一个
-        成功提取到 subject ID 即返回。全部失败静默降级返回空列表（API
-        搜索为主源，网页只是补充），不打印红色错误。
+        跟随当前数据源：官方源→bgm.tv，镜像源→bangumi.lol（浏览器 UA 过
+        Cloudflare）。失败静默降级返回空列表（API 搜索为主源，网页仅补充），
+        不打印错误。
         """
+        url = f"{self._web_base}/subject_search/{quote(keyword)}?cat=1"
         try:
-            from urllib.parse import quote
-            path = f"/subject_search/{quote(keyword)}?cat=1"
-            for base in self._web_mirrors:
-                url = f"{base}{path}"
-                try:
-                    resp = self.session.get(url, timeout=timeout, verify=False,
-                                            headers={"User-Agent": _WEB_BROWSER_UA})
-                    resp.raise_for_status()
-                    subject_ids = re.findall(r'href="/subject/(\d+)"', resp.text)
-                    if subject_ids:
-                        seen = set()
-                        unique = []
-                        for sid in subject_ids:
-                            if sid not in seen:
-                                seen.add(sid)
-                                unique.append(sid)
-                        return unique
-                except Exception:
-                    continue
+            resp = self.session.get(url, timeout=timeout, verify=False,
+                                    headers={"User-Agent": _WEB_BROWSER_UA})
+            resp.raise_for_status()
+            subject_ids = re.findall(r'href="/subject/(\d+)"', resp.text)
+        except (requests.exceptions.RequestException, ValueError):
             return []
-        except Exception as e:
-            print(f"⚠️ 网页搜索不可用 [{keyword}]: {str(e)[:50]}（API 搜索为主源，网页仅补充）")
-            return []
+        seen = set()
+        unique = []
+        for sid in subject_ids:
+            if sid not in seen:
+                seen.add(sid)
+                unique.append(sid)
+        return unique
 
     def _web_search_fallback(self, keyword: str, author: str = "",
                               alt_keywords: list = None) -> List[Dict]:
@@ -442,15 +275,15 @@ class BangumiFetcher:
                 print(f"✅ 网页搜索 ({strategy_name}) 找到 {len(results)} 个结果")
                 return results
             else:
-                print(f"⚠️ 网页搜索 ({strategy_name}) 找到 ID 但获取详情失败")
+                print(f"⚠️  网页搜索 ({strategy_name}) 找到 ID 但获取详情失败")
 
         return []
 
     def get_manga_detail(self, subject_id: int) -> Optional[Dict]:
         """获取漫画详细信息（含作者、出版社等）
 
-        走 v0 GET {base}/v0/subjects/{id}（官方/镜像均支持）；failover 由
-        _request_json 处理。
+        走 v0 GET {base}/v0/subjects/{id}（官方/镜像均支持）；直连所选
+        数据源域名，不做自动 failover。
         """
         try:
             path = f"/v0/subjects/{subject_id}"
@@ -463,12 +296,10 @@ class BangumiFetcher:
         """从 Bangumi 网页信息栏兜底提取作者（API infobox 无作者字段时使用）
 
         老条目（如 37953）API infobox 无「作者」字段，但网页版信息栏有
-        `作者: <a href="/person/39">CLAMP</a>`。带实例级缓存：同一
-        subject_id 只抓取一次；超时/失败返回空列表，不抛异常。
-
-        镜像链 bgm.tv → bangumi.lol → bgmmi.anibt.net，逐个尝试；第一个
-        成功提取到作者即返回。全部失败静默降级返回空列表（API infobox
-        作者为主源，网页只是补充），只打印淡色提示不打印红色错误。
+        `作者: <a href="/person/39">CLAMP</a>`。跟随当前数据源：官方源→
+        bgm.tv，镜像源→bangumi.lol（浏览器 UA 过 Cloudflare）。带实例级
+        缓存：同一 subject_id 只抓取一次；失败静默降级返回空列表（API
+        infobox 作者为主源，网页仅补充），不打印错误。
 
         Args:
             subject_id: Bangumi 条目 ID
@@ -478,28 +309,19 @@ class BangumiFetcher:
         """
         if subject_id in self._web_authors_cache:
             return self._web_authors_cache[subject_id]
-        authors = []
-        last_error = None
-        for base in self._web_mirrors:
-            url = f"{base}/subject/{subject_id}"
-            try:
-                resp = self.session.get(url, timeout=TIMEOUT, verify=False,
-                                        headers={"User-Agent": _WEB_BROWSER_UA})
-                resp.raise_for_status()
-                # 响应头无 charset 时 requests 默认按 ISO-8859-1 解码导致中文乱码；
-                # 页面实际为 UTF-8，显式指定编码后再解析作者字段
-                resp.encoding = "utf-8"
-                authors = _parse_web_authors(resp.text)
-                if authors:
-                    break
-            except Exception as e:
-                last_error = e
-                continue
-        if not authors and last_error:
-            print(f"⚠️ 网页作者提取不可用 [{subject_id}]: {str(last_error)[:50]}（API infobox 作者为主源，网页仅补充）")
+        url = f"{self._web_base}/subject/{subject_id}"
+        try:
+            resp = self.session.get(url, timeout=TIMEOUT, verify=False,
+                                    headers={"User-Agent": _WEB_BROWSER_UA})
+            resp.raise_for_status()
+            # 响应头无 charset 时 requests 默认按 ISO-8859-1 解码导致中文乱码；
+            # 页面实际为 UTF-8，显式指定编码后再解析作者字段
+            resp.encoding = "utf-8"
+            authors = _parse_web_authors(resp.text)
+        except (requests.exceptions.RequestException, UnicodeError, ValueError):
+            authors = []
         self._web_authors_cache[subject_id] = authors
         return authors
-
 
     def extract_bangumi_authors(self, detail: Dict) -> List[str]:
         """包装方法：委托到 author_utils"""
@@ -516,103 +338,6 @@ class BangumiFetcher:
         from .author_utils import match_author as _match
         return _match(folder_author, bangumi_authors)
 
-
     def extract_comicinfo(self, detail: Dict, folder_info: Dict) -> Dict:
-        """提取ComicInfo.xml所需字段"""
-        # 获取不同类型的作者信息
-        author_types = extract_bangumi_authors_by_type(detail)
-        
-        # 正确定义角色分类 - Bangumi中的"作者"实际上是作画者
-        story_roles = ["原作", "监督", "监制", "脚本", "导演", "原著"]  # 故事创作者
-        art_roles = ["作者", "作画", "制作", "插画", "绘制"]        # 绘画创作者
-        
-        # 按角色分类收集
-        story_authors = []  # 故事相关（Writer）
-        art_authors = []    # 绘画相关（Penciller）
-        
-        for role_type, authors in author_types.items():
-            if role_type in story_roles:
-                story_authors.extend(authors)
-            elif role_type in art_roles:
-                art_authors.extend(authors)
-        
-        # 去重
-        story_authors = list(dict.fromkeys(story_authors))
-        art_authors = list(dict.fromkeys(art_authors))
-        
-        # 应用规则
-        if len(story_authors) == 0 and len(art_authors) == 0:
-            # 没有任何作者信息，使用文件夹作者
-            writer_str = folder_info["author"]
-            penciller_str = ""
-        elif len(story_authors) == 0 and len(art_authors) > 0:
-            # 只有绘画作者（包括Bangumi的"作者"），全部放入Writer，Penciller留空
-            writer_str = ", ".join(art_authors)
-            penciller_str = ""
-        elif len(story_authors) > 0 and len(art_authors) == 0:
-            # 只有故事作者，全部放入Writer，Penciller留空
-            writer_str = ", ".join(story_authors)
-            penciller_str = ""
-        else:
-            # 同时有故事作者和绘画作者，分别放入对应字段
-            writer_str = ", ".join(story_authors)
-            penciller_str = ", ".join(art_authors)
-
-        # 根据完结状态决定Volume字段
-        # 如果已完结，填写总卷数；如果连载中，留空
-        volume_value = str(folder_info["total_volumes"]) if folder_info["complete"] else ""
-
-        # 基础信息
-        info = {
-            "Title": folder_info["series"],
-            "Series": folder_info["series"],
-            "Count": volume_value,  # 已完结填写总卷数，连载中留空
-            "Volume": "",  # 单本书的卷数将在后续处理中填充
-            "Writer": writer_str,
-            "Penciller": penciller_str,
-            "Publisher": "",
-            "Summary": "",
-            "Tags": "",
-            "Genre": extract_bangumi_genre(detail),
-            "LanguageISO": "zh-CN",
-            "Format": "Zip",
-            "Status": "Completed" if folder_info["complete"] else "Ongoing",
-            "Web": f"https://bgm.tv/subject/{detail.get('id', '')}",
-        }
-        
-        # 对于画集、设定集、番外等非单行本内容，清空Count和Volume字段
-        if folder_info.get("is_non_volume", False):
-            info["Count"] = ""
-            info["Volume"] = ""
-        
-        # 补充简介（清理HTML标签）
-        summary = detail.get("summary", "")
-        if summary:
-            clean_summary = re.sub(r'<.*?>', '', summary).strip()
-            # 如果已完结，在summary最后添加"已完结"标记
-            if folder_info["complete"]:
-                if clean_summary:
-                    clean_summary = f"{clean_summary}\n已完结。"
-                else:
-                    clean_summary = "已完结。" # 如果简介为空，直接设置为"已完结。"
-            info["Summary"] = clean_summary
-
-        # 补充标签：命中 Genre 白名单的词从 Tags 移除，避免与 Genre 重复
-        genre_tags = set(extract_bangumi_genre(detail).split(", "))
-        tags = [tag["name"] for tag in detail.get("tags", []) if tag.get("count", 0) >= 2][:10]
-        tags = [t for t in tags if t not in genre_tags]
-        tags = [t for t in tags if not re.match(r"^\d+$", t)]  # 去掉纯数字（如 2024）
-        remaining = list(tags)
-        remaining.append(info["Status"])
-        info["Tags"] = ",".join(dict.fromkeys(remaining))  # 去重（保留顺序）
-
-        # 补充出版社
-        for item in detail.get("infobox", []):
-            if item.get("key") == "出版社":
-                value = item.get("value", "")
-                if isinstance(value, list):
-                    info["Publisher"] = ",".join([v.get("v", "") for v in value if v.get("v")])
-                else:
-                    info["Publisher"] = value.strip()
-                break
-
+        """提取 ComicInfo.xml 所需字段（委托到 bangumi_comicinfo.build_comicinfo）"""
+        return build_comicinfo(detail, folder_info)
