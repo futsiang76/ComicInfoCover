@@ -4,7 +4,7 @@
 
 覆盖范围：
 - cbz（=zip）：走 zipfile 读写，扩展名保留 .cbz（不做格式转换）
-- cbr/rar/7z：走 7-Zip —— 读取 XML、写入 XML + 格式转换（解压→写XML→重压zip→替换原文件）
+- cbr/rar/7z：走 7-Zip —— 读取 XML、写入 XML + 格式转换（解压→写XML→重压.cbz，keep 模式固定保留原文件）
 - 读取路径：read_xml_from_zip / check_zip_xml_files 对 4 种格式均可直接读
 
 说明：7-Zip 只支持解压 RAR、不支持创建 RAR，本机未装 WinRAR。
@@ -121,22 +121,22 @@ def test_cbz_read_missing_xml_returns_none(cbz_file):
 
 # ---------- cbr/rar/7z（7-Zip 保存 + 格式转换链路） ----------
 
-def test_archive_save_converts_to_zip(seven_zip_archive):
-    """cbr/rar/7z 保存 XML 后转换为同名 .zip（7z 无法原地写 rar/7z）"""
+def test_archive_save_converts_to_cbz(seven_zip_archive):
+    """cbr/rar/7z 保存 XML 后自动转换为同名 .cbz（keep 模式固定保留原文件）"""
     original = seven_zip_archive
     base = os.path.splitext(original)[0]
     assert add_file_to_zip(original, SAMPLE_XML)
-    converted = base + ".zip"
+    converted = base + ".cbz"
     assert os.path.exists(converted)
-    assert not os.path.exists(original)
+    assert os.path.exists(original)  # keep 模式固定保留原文件，不删除
 
 
 def test_archive_read_xml_after_conversion(seven_zip_archive):
-    """cbr/rar/7z 转换后的 .zip 可读回 XML 内容（图片文件保留）"""
+    """cbr/rar/7z 转换后的 .cbz 可读回 XML 内容（图片文件保留）"""
     original = seven_zip_archive
     base = os.path.splitext(original)[0]
     assert add_file_to_zip(original, SAMPLE_XML)
-    converted = base + ".zip"
+    converted = base + ".cbz"
     info = read_xml_from_zip(converted)
     assert info is not None
     assert info.get("Title") == "测试漫画"
@@ -147,11 +147,11 @@ def test_archive_read_xml_after_conversion(seven_zip_archive):
 
 
 def test_archive_check_xml_files_after_conversion(seven_zip_archive):
-    """cbr/rar/7z 转换后的 .zip 能被 check_zip_xml_files 识别"""
+    """cbr/rar/7z 转换后的 .cbz 能被 check_zip_xml_files 识别"""
     original = seven_zip_archive
     base = os.path.splitext(original)[0]
     assert add_file_to_zip(original, SAMPLE_XML)
-    converted = base + ".zip"
+    converted = base + ".cbz"
     exists, matches, other = check_zip_xml_files(converted, SAMPLE_XML)
     assert exists is True
     assert matches is True

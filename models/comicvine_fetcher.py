@@ -23,14 +23,22 @@ from urllib.parse import quote
 import requests
 from thefuzz import fuzz
 
-from config import TIMEOUT
-
-try:
-    from secrets import COMICVINE_API_KEY
-except ImportError:
-    COMICVINE_API_KEY = ""  # secrets.py 缺失时降级为空字符串（请求返回 100 并在日志提示）
+import config
 
 BASE_URL = "https://comicvine.gamespot.com/api"
+
+
+def _get_api_key() -> str:
+    """返回 ComicVine API Key；未配置时打印提示并返回空串
+
+    Key 从 config.COMICVINE_API_KEY 读取（config 启动加载时已做
+    user_config.json 主源 → secrets.py legacy 降级），设置对话框
+    保存后下一次请求即生效。两个源都未配置时返回空串，不崩溃。
+    """
+    api_key = (config.COMICVINE_API_KEY or "").strip()
+    if not api_key:
+        print("⚠️   ComicVine API Key 未配置，请到「设置」中填写后重试")
+    return api_key
 
 # person_credits role → ComicInfo 字段映射（其余 role 忽略）
 ROLE_FIELD_MAP = {
@@ -79,8 +87,11 @@ class ComicVineFetcher:
                         未找到或请求失败时为空列表（网络类错误不重试，报回即止）
         """
         results = []
+        api_key = _get_api_key()
+        if not api_key:
+            return []
         for resource in ("series", "volume"):
-            url = (f"{BASE_URL}/search/?api_key={COMICVINE_API_KEY}"
+            url = (f"{BASE_URL}/search/?api_key={api_key}"
                    f"&format=json&resources={resource}&query={quote(keyword)}")
             data = self._get_json(url)
             if not data:
@@ -114,7 +125,10 @@ class ComicVineFetcher:
             dict: ComicInfo 字段字典（见 _build_comic_info）；请求失败/ID 无效
                   时返回空 dict
         """
-        url = f"{BASE_URL}/volume/4050-{volume_id}/?api_key={COMICVINE_API_KEY}&format=json"
+        api_key = _get_api_key()
+        if not api_key:
+            return {}
+        url = f"{BASE_URL}/volume/4050-{volume_id}/?api_key={api_key}&format=json"
         data = self._get_json(url)
         if not data:
             return {}
@@ -136,7 +150,10 @@ class ComicVineFetcher:
             dict: ComicInfo 字段字典（见 _build_series_info）；请求失败/ID 无效
                   时返回空 dict
         """
-        url = f"{BASE_URL}/series/4075-{series_id}/?api_key={COMICVINE_API_KEY}&format=json"
+        api_key = _get_api_key()
+        if not api_key:
+            return {}
+        url = f"{BASE_URL}/series/4075-{series_id}/?api_key={api_key}&format=json"
         data = self._get_json(url)
         if not data:
             return {}
@@ -239,7 +256,7 @@ class ComicVineFetcher:
             dict: 响应 JSON；请求异常/状态码非 1 时返回 None
         """
         try:
-            response = self.session.get(url, timeout=TIMEOUT)
+            response = self.session.get(url, timeout=config.TIMEOUT)
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.RequestException as e:
@@ -250,7 +267,7 @@ class ComicVineFetcher:
             return None
         if data.get("status_code") != 1:
             if data.get("status_code") == 100:
-                print("🔴 ComicVine API Key 无效（status_code=100），请检查 secrets.py 的 COMICVINE_API_KEY")
+                print("🔴 ComicVine API Key 无效（status_code=100），请检查设置中的 ComicVine API Key")
             else:
                 print(f"🔴 ComicVine API 错误 (status_code={data.get('status_code')}): "
                       f"{str(data.get('error'))[:120]}")

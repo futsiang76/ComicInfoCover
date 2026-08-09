@@ -14,8 +14,9 @@ from thefuzz import fuzz
 from zhconv import convert
 import urllib3
 
-from config import (AUTHOR_MATCH_THRESHOLD, BANGUMI_ACCESS_TOKEN,
-                    FUZZ_THRESHOLD, MAX_RETRIES, SHOW_TOP_N, TIMEOUT)
+import config
+from config import (AUTHOR_MATCH_THRESHOLD, FUZZ_THRESHOLD, MAX_RETRIES,
+                    SHOW_TOP_N, TIMEOUT)
 
 # 禁用SSL警告（仅用于开发环境）
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -154,9 +155,11 @@ class BangumiFetcher:
             "Accept": "application/json",
             "Content-Type": "application/json"
         }
-        if BANGUMI_ACCESS_TOKEN:
-            self.session.headers["Authorization"] = f"Bearer {BANGUMI_ACCESS_TOKEN}"
-        
+        # 从 config 模块读取 token（user_config.json 主源），设置保存后新建
+        # fetcher 即可生效（from config import 会绑定旧值，故此处引用模块属性）
+        if config.BANGUMI_ACCESS_TOKEN:
+            self.session.headers["Authorization"] = f"Bearer {config.BANGUMI_ACCESS_TOKEN}"
+
         # 禁用SSL证书验证（解决HTTPS连接问题）
         self.session.verify = False
 

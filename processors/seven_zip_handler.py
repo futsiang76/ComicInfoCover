@@ -134,14 +134,63 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str, xml_exis
         print(f"🔴 回退方法失败: {str(e)[:50]}")
         return False
 
-def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'ComicInfo.xml') -> bool:
-    """处理RAR、CBR、CBZ格式文件，并用ZIP复写回去
-    
+
+def _convert_zip_container(zip_path: str, file_content: str, file_name: str,
+                           target_ext: str, keep_original: bool = False) -> bool:
+    """zip/cbz 容器 → 目标 zip 容器（.cbz/.zip）转换，用 zipfile 重写
+
+    手动选择 CBZ/ZIP 格式时，对已是 zip 容器的源文件无需 7z：
+    读出全部条目 → 按目标扩展名写出新文件（ZIP_STORED）→ 写入 XML。
+    转换成功且 keep_original=False 时删除原文件。
+
+    Args:
+        zip_path: 源 zip/cbz 文件路径
+        file_content: 待写入的 XML 内容
+        file_name: 文件名（默认 ComicInfo.xml）
+        target_ext: 目标扩展名（".cbz"/".zip"）
+        keep_original: True 时保留原文件；False 时转换成功后删除原文件
+
+    Returns:
+        bool: 是否成功
+    """
+    import zipfile
+
+    base_name = os.path.splitext(zip_path)[0]
+    new_path = base_name + target_ext
+    try:
+        # 读出源文件全部条目（目标 XML 由新文件覆盖写入）
+        with zipfile.ZipFile(zip_path, 'r') as zf:
+            entries = {name: zf.read(name) for name in zf.namelist() if name != file_name}
+        # 按目标扩展名写出新归档
+        with zipfile.ZipFile(new_path, 'w', zipfile.ZIP_STORED, allowZip64=True) as zf:
+            for name, content in entries.items():
+                zf.writestr(name, content)
+            zf.writestr(file_name, file_content.encode('utf-8'))
+    except (zipfile.BadZipFile, OSError) as e:
+        print(f"🔴 ZIP 容器转换失败 [{os.path.basename(zip_path)}]: {str(e)[:100]}")
+        return False
+
+    if not keep_original and os.path.abspath(new_path) != os.path.abspath(zip_path):
+        try:
+            os.remove(zip_path)
+            print(f"🗑️   已删除原始文件: {os.path.basename(zip_path)}")
+        except OSError as e:
+            print(f"⚠️   删除原始文件失败: {str(e)[:100]}")
+    print(f"✅ 成功转换并添加文件: {file_name}")
+    return True
+
+
+def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'ComicInfo.xml',
+                           target_ext: str = '.zip', keep_original: bool = False) -> bool:
+    """处理 RAR/CBR/CBZ 归档：提取 → 写入 XML → 以目标格式重新压缩
+
     Args:
         zip_path: 文件路径
         file_content: 文件内容
         file_name: 文件名
-        
+        target_ext: 目标扩展名（".zip"/".cbz"/".cb7"）；".cb7" 用 7z 容器，其余用 zip 容器
+        keep_original: True 时保留原文件（仅转换出的新文件）；False 时转换成功删除原文件
+
     Returns:
         bool: 是否成功
     """
@@ -198,17 +247,17 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
         
         # 创建临时ZIP文件（为每个实例生成唯一路径）
         # 使用唯一标识符避免多实例冲突
-        safe_temp_name = f"temp_{instance_id}_{re.sub(r'[\\s]', '_', safe_basename)}.zip"
+        safe_temp_name = f"temp_{instance_id}_{re.sub(r'[\\s]', '_', safe_basename)}{target_ext}"
         temp_zip_path = os.path.join(temp_dir, safe_temp_name)
         
         # 将提取的内容重新压缩为ZIP
-        print(f"🔄 重新压缩为ZIP格式...")
+        print(f"🔄 重新压缩为{target_ext}格式...")
         zip_success = False
-                
-        # 尝试不同的压缩方法（只保留成功的方法）
+
+        # .cb7 用 7z 容器（-mx=0 禁用压缩，后续按图片格式压缩），其余用 zip 容器
+        container_args = ["-t7z", "-mx=0"] if target_ext == ".cb7" else ["-tzip", "-mm=copy"]
         compression_methods = [
-            # 方法1: 正常压缩（不带引号）
-            lambda: _run_seven_zip(seven_zip_path, ['a', '-tzip', '-mm=copy', '-y', temp_zip_path, f'{extract_dir}/*'])
+            lambda: _run_seven_zip(seven_zip_path, ["a", *container_args, "-y", temp_zip_path, f"{extract_dir}/*"])
         ]
         
         for i, method in enumerate(compression_methods):
@@ -229,23 +278,22 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
             print("🔴 所有压缩方法都失败")
             return False
         
-        # 替换原始文件，并将扩展名改为.zip
-        # 生成新的文件名（将.cbr/.cbz/.rar改为.zip）
+        # 替换原始文件，扩展名改为目标格式
         base_name = os.path.splitext(zip_path)[0]  # 去掉原扩展名
-        new_zip_path = base_name + '.zip'
-        
-        # 复制临时ZIP文件到新位置
+        new_zip_path = base_name + target_ext
+
+        # 复制临时文件到新位置
         shutil.copy2(temp_zip_path, new_zip_path)
-        
-        # 删除原始文件（可选，根据需求决定）
-        if zip_path != new_zip_path:  # 确保不是同一个文件
+
+        # 转换成功且允许删除时，删除原文件（keep_original=True 时固定保留）
+        if not keep_original and zip_path != new_zip_path:
             try:
                 os.remove(zip_path)
-                print(f"🗑️  已删除原始文件: {os.path.basename(zip_path)}")
+                print(f"🗑️   已删除原始文件: {os.path.basename(zip_path)}")
             except Exception as e:
-                print(f"⚠️  删除原始文件失败: {str(e)}")
-        
-        print(f"✅ 成功将文件转换为ZIP并添加文件: {file_name}")
+                print(f"⚠️   删除原始文件失败: {str(e)}")
+
+        print(f"✅ 成功将文件转换为{target_ext}并添加文件: {file_name}")
         print(f"📁 新文件: {os.path.basename(new_zip_path)}")
         
         # 清理临时文件

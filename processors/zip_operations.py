@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from typing import Any, Dict, List, Optional, Tuple
 
+import config
 from parsers.file_parser import (generate_smart_title,
                                  parse_volume_from_filename)
 from processors.xml_generator import XMLGenerator
@@ -157,26 +158,114 @@ def read_xml_from_zip(zip_path: str, target_file_name: str = 'ComicInfo.xml') ->
         return None
 
 
-def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInfo.xml') -> bool:
-    """向ZIP/CBZ/CBR/RAR文件添加或更新文件"""
+def resolve_save_target(zip_path: str, save_format: Optional[str] = None,
+                        delete_after_convert: Optional[bool] = None) -> Tuple[Optional[str], bool]:
+    """按保存格式设置解析输出目标（供 add_file_to_zip 使用）
+
+    Args:
+        zip_path: 源文件路径
+        save_format: 保存格式（keep/cbz/zip/cb7），默认读 config.SAVE_FORMAT
+        delete_after_convert: 转换成功后是否删除原文件，默认读 config.DELETE_AFTER_CONVERT
+
+    Returns:
+        (target_ext, keep_original)：
+        - target_ext=None 表示保持原格式（zip/cbz 原地写，无需转换）
+        - target_ext='.cbz'/'.zip'/'.cb7' 表示强制转换到该扩展名
+        - keep_original=True 时转换后保留原文件；False 时转换成功后删除
+    """
+    if save_format is None:
+        save_format = config.SAVE_FORMAT
+    if delete_after_convert is None:
+        delete_after_convert = config.DELETE_AFTER_CONVERT
+    target_ext = config.SAVE_FORMAT_EXT.get(save_format)
+    if target_ext is None:
+        # 保持原格式：zip/cbz 原地写；rar/cbr/7z 无法原地写，自动转 CBZ 并固定保留原文件
+        if zip_path.lower().endswith(('.cbr', '.rar', '.7z')):
+            return '.cbz', True
+        return None, True
+    return target_ext, not delete_after_convert
+
+
+def _fallback_write(zip_path: str, file_content: str, file_name: str,
+                    target_exists: bool, target_ext: Optional[str],
+                    keep_original: bool) -> bool:
+    """7z 不可用/失败时的兜底写入：zip/cbz 用 zipfile，其它归档走通用转换
+
+    Args:
+        zip_path: 源归档文件路径
+        file_content: 待写入的 XML 内容
+        file_name: 文件名
+        target_exists: 目标 XML 是否已存在（供 _add_with_zipfile 打印提示用）
+        target_ext: 解析出的目标扩展名（None 表示保持原格式）
+        keep_original: 转换成功后是否保留原文件
+
+    Returns:
+        bool: 是否成功
+    """
+    if zip_path.lower().endswith(('.cbz', '.zip')):
+        # zip/cbz 本质是 zip，无需 7z 即可原地写
+        return _add_with_zipfile(zip_path, file_content, file_name,
+                                 xml_exists=bool(target_exists))
+    return _handle_archive_format(zip_path, file_content, file_name,
+                                  target_ext=target_ext or '.zip',
+                                  keep_original=keep_original)
+
+
+def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInfo.xml',
+                    target_ext: Optional[str] = None) -> bool:
+    """向 ZIP/CBZ/CBR/RAR/7Z 文件添加或更新文件
+
+    保存格式由 config.SAVE_FORMAT 决定（keep/cbz/zip/cb7），也可通过
+    target_ext 显式指定目标扩展名（None 时按设置解析）：
+    - keep: zip/cbz 原地写；rar/cbr/7z 自动转 .cbz 并保留原文件
+    - cbz/zip: 统一转 .cbz/.zip（zip 容器，zipfile 写）
+    - cb7: 统一转 .cb7（7z 容器，7z.exe 写）
+    格式转换成功后是否删除原文件由 config.DELETE_AFTER_CONVERT 决定
+    （keep 模式 rar/cbr/7z 自动转换固定保留原文件）。
+
+    Args:
+        zip_path: 源归档文件路径
+        file_content: 待写入的 XML 内容
+        file_name: 文件名（默认 ComicInfo.xml）
+        target_ext: 显式指定目标扩展名（'.cbz'/'.zip'/'.cb7'/None 按设置）
+
+    Returns:
+        bool: 是否成功
+    """
+    if target_ext is None:
+        target_ext, keep_original = resolve_save_target(zip_path)
+    else:
+        keep_original = not config.DELETE_AFTER_CONVERT
+    current_ext = os.path.splitext(zip_path)[1].lower()
+
     try:
         # 检查文件是否存在
         if not os.path.exists(zip_path):
             print(f"🔴 文件不存在: {zip_path}")
             return False
-        
-        # 如果是.cbr/.rar/.7z文件，直接走格式转换逻辑（cbz=zip 走下方 zipfile/7z 更新，保留扩展名）
-        if zip_path.lower().endswith(('.cbr', '.rar', '.7z')):
-            print(f"🔄 检测到归档格式文件，进行格式转换: {os.path.basename(zip_path)}")
-            return _handle_archive_format(zip_path, file_content, file_name)
-        
+
+        # 需要转换格式：手动选择 CBZ/ZIP/CB7，或 keep 模式下 rar/cbr/7z 自动转 CBZ
+        if target_ext is not None and current_ext != target_ext:
+            print(f"🔄 检测到格式转换: {os.path.basename(zip_path)} → {target_ext}")
+            if current_ext in ('.cbz', '.zip') and target_ext in ('.cbz', '.zip'):
+                # zip 容器互转：zipfile 写，无需 7z
+                return _convert_zip_container(zip_path, file_content, file_name,
+                                              target_ext, keep_original)
+            return _handle_archive_format(zip_path, file_content, file_name,
+                                          target_ext=target_ext,
+                                          keep_original=keep_original)
+
+        # 目标扩展名与当前一致（或 keep 模式 zip/cbz）：原地写，保留扩展名
         # 尝试检查文件中的XML文件情况
         try:
             target_exists, content_matches, other_xml_files = check_zip_xml_files(zip_path, file_content, file_name)
         except Exception as e:
             print(f"⚠️  检查文件失败，可能是RAR格式: {str(e)[:50]}")
             # 假设文件是归档格式，需要特殊处理
-            return _handle_archive_format(zip_path, file_content, file_name)
+            return _fallback_write(zip_path, file_content, file_name,
+                                   target_exists=False,
+                                   target_ext=target_ext,
+                                   keep_original=keep_original)
         
         # 导入配置
         from config import MODE_SKIP_XMLEXIST
@@ -289,19 +378,28 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
                 print(f"⚠️  7-Zip命令执行失败: {result.stderr.strip()}")
                 # 尝试通用归档格式处理
                 print("🔄 尝试通用归档格式处理...")
-                return _handle_archive_format(zip_path, file_content, file_name)
+                return _fallback_write(zip_path, file_content, file_name,
+                                       target_exists=bool(target_exists),
+                                       target_ext=target_ext,
+                                       keep_original=keep_original)
         else:
             # 7-Zip不可用，尝试通用归档格式处理
             print("⚠️  7-Zip未找到，尝试通用归档格式处理")
-            return _handle_archive_format(zip_path, file_content, file_name)
+            return _fallback_write(zip_path, file_content, file_name,
+                                   target_exists=bool(target_exists),
+                                   target_ext=target_ext,
+                                   keep_original=keep_original)
             
     except Exception as e:
         print(f"🔴 添加文件失败 [{zip_path}]: {str(e)[:50]}")
         # 尝试通用归档格式处理
         print("🔄 尝试通用归档格式处理...")
         try:
-            return _handle_archive_format(zip_path, file_content, file_name)
-        except:
+            return _fallback_write(zip_path, file_content, file_name,
+                                   target_exists=locals().get('target_exists', False),
+                                   target_ext=target_ext,
+                                   keep_original=keep_original)
+        except Exception:
             return False
     finally:
         # 清理临时文件
@@ -375,8 +473,9 @@ def _read_xml_via_seven_zip(archive_path: str,
         return None
 
 from .seven_zip_handler import (_add_with_zipfile, _check_seven_zip_available,
-                                _extract_file_via_seven_zip, _handle_archive_format,
-                                _list_xml_files_via_seven_zip, _run_seven_zip)
+                                _convert_zip_container, _extract_file_via_seven_zip,
+                                _handle_archive_format, _list_xml_files_via_seven_zip,
+                                _run_seven_zip)
 
 def check_zip_integrity(zip_path: str) -> bool:
     """检查ZIP/CBZ/CBR/RAR文件完整性"""
