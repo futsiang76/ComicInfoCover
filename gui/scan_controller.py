@@ -46,9 +46,9 @@ def start_scan(mw):
         QMessageBox.warning(mw, "警告", "指定的目录不存在")
         return
 
-    # 数据源路由：manhuagui / ComicVine 走「多系列拦截 → 单系列扫描」
+    # 数据源路由：其它网络来源 A / ComicVine 走「多系列拦截 → 单系列扫描」
     source = getattr(mw, "selected_source", "Bangumi（默认）")
-    if source == "manhuagui":
+    if source == "其它网络来源 A":
         _start_manhuagui_scan(mw, manga_root)
         return
     if source == "ComicVine":
@@ -161,7 +161,7 @@ def _start_manhuagui_scan(mw, manga_root: str) -> None:
     if len(folders) > 1:
         QMessageBox.warning(
             mw, "数据源限制",
-            "manhuagui 源只支持单系列扫描，请拆分成单系列目录或用 Bangumi 源",
+            "其它网络来源 A 源只支持单系列扫描，请拆分成单系列目录或用 Bangumi 源",
         )
         return
 
@@ -173,7 +173,7 @@ def _start_manhuagui_scan(mw, manga_root: str) -> None:
     # 3.5 清空日志/结果（主线程操作，对应原 _run_manhuagui_single_scan 的初始化）
     mw.log_text.clear()
     mw.log_text.append(f"开始扫描: {manga_root}")
-    mw.log_text.append("数据源: manhuagui")
+    mw.log_text.append("数据源: 其它网络来源 A")
     mw.log_text.append(f"Manga设置: {manga_value}")
     mw.scan_results = []
     mw.update_results_table()

@@ -18,7 +18,7 @@ from config import AUTO_TURBO_MATCH, MODE_SKIP_XMLEXIST
 from .utils import SmoothMovieLabel
 
 
-MODE_CONSTRAINED_SOURCES = ("manhuagui", "ComicVine")
+MODE_CONSTRAINED_SOURCES = ("其它网络来源 A", "ComicVine")
 
 MODE_DESCRIPTIONS = {
     0: "逐文件夹匹配 Bangumi，匹配失败时弹出选择窗口。速度最慢但结果最准确。",
@@ -186,7 +186,7 @@ def build_scan_tab(mw, tab_widget):
     # 配色对齐「漫画根目录」路径输入框（绿色主题）
     mw.source_combo.setStyleSheet("border: 2px solid #4CAF50; padding: 4px; font-size: 13px; background-color: #f0fff0;")
     mw.source_combo.setMinimumWidth(140)
-    mw.source_combo.addItems(["Bangumi（默认）", "manhuagui", "ComicVine"])
+    mw.source_combo.addItems(["Bangumi（默认）", "ComicVine", "其它网络来源 A"])
     mw.source_combo.setCurrentIndex(0)
     mw.selected_source = "Bangumi（默认）"
     mw.source_combo.currentTextChanged.connect(lambda text: _on_source_changed(mw, text))
