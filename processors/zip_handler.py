@@ -68,7 +68,7 @@ class FileHandler:
                 if not os.path.isfile(file_path):
                     continue
                 
-                if not file.lower().endswith(('.zip', '.cbz', '.cbr', '.rar')):
+                if not file.lower().endswith(('.zip', '.cbz', '.cbr', '.rar', '.7z')):
                     continue
                 
                 total_files += 1
@@ -114,7 +114,7 @@ class FileHandler:
                 if not os.path.isfile(file_path):
                     continue
                 
-                if file.lower().endswith(('.zip', '.cbz', '.cbr', '.rar')):
+                if file.lower().endswith(('.zip', '.cbz', '.cbr', '.rar', '.7z')):
                     comic_files.append(file)
         
         except Exception as e:
@@ -146,7 +146,7 @@ class FileHandler:
                 result['error'] = '文件不存在'
                 return result
             
-            result['is_zip'] = file_path.lower().endswith(('.zip', '.cbz', '.cbr', '.rar'))
+            result['is_zip'] = file_path.lower().endswith(('.zip', '.cbz', '.cbr', '.rar', '.7z'))
             if not result['is_zip']:
                 result['error'] = '不是ZIP/CBZ文件'
                 return result

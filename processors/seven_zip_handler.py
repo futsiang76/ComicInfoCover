@@ -31,7 +31,9 @@ def _check_seven_zip_available() -> str:
         result = subprocess.run(
             ['cmd', '/c', '7z.exe', '--help'],
             capture_output=True,
-            text=True
+            text=True,
+            encoding='utf-8',
+            errors='replace'
         )
         if result.returncode == 0 or "7-Zip" in result.stdout:
             return "7z.exe"
@@ -40,7 +42,9 @@ def _check_seven_zip_available() -> str:
         result = subprocess.run(
             ['cmd', '/c', '7za.exe', '--help'],
             capture_output=True,
-            text=True
+            text=True,
+            encoding='utf-8',
+            errors='replace'
         )
         if result.returncode == 0 or "7-Zip" in result.stdout:
             return "7za.exe"
@@ -268,22 +272,25 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
 
 def _run_seven_zip(seven_zip_path: str, args: list) -> subprocess.CompletedProcess:
     """运行7-Zip命令
-    
+
     Args:
         seven_zip_path: 7-Zip可执行文件路径
         args: 命令参数列表
-        
+
     Returns:
         subprocess.CompletedProcess: 命令执行结果
     """
     if os.name == 'nt':  # Windows系统
         # 直接调用7-Zip，不使用cmd
         cmd_list = [seven_zip_path] + args
-        # 不显示具体命令，避免显示错误信息
+        # 7z.exe 在 Windows 输出系统 ANSI（GBK）编码，text=True 默认 utf-8 解码会
+        # 在读取线程抛 UnicodeDecodeError；用容错解码避免线程崩溃、保证 stdout 完整
         return subprocess.run(
             cmd_list,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             shell=True  # 使用shell=True确保路径正确处理
         )
     else:  # Unix-like系统
@@ -293,4 +300,74 @@ def _run_seven_zip(seven_zip_path: str, args: list) -> subprocess.CompletedProce
             capture_output=True,
             text=True
         )
+
+
+def _extract_file_via_seven_zip(archive_path: str, file_name: str = 'ComicInfo.xml') -> Optional[str]:
+    """用7-Zip从归档中提取单个文件内容（二进制安全读取，UTF-8解码）
+
+    适用于 cbr/rar/7z 等 zipfile 无法直接打开的归档格式。
+    使用 7z e -so 将文件内容输出到 stdout，避免解压整个归档。
+
+    Args:
+        archive_path: 归档文件路径
+        file_name: 要提取的文件名
+
+    Returns:
+        Optional[str]: 文件文本内容，失败返回None
+    """
+    try:
+        seven_zip_path = _check_seven_zip_available()
+        if not seven_zip_path:
+            return None
+
+        result = subprocess.run(
+            [seven_zip_path, 'e', '-so', '-y', archive_path, file_name],
+            capture_output=True,
+            shell=True
+        )
+        if result.returncode != 0:
+            return None
+        # 二进制模式读取，显式 UTF-8 解码，避免 Windows 默认编码（GBK）破坏中文内容
+        return result.stdout.decode('utf-8', errors='replace')
+    except Exception as e:
+        print(f"⚠️  使用7-Zip提取文件失败 [{archive_path}]: {str(e)[:50]}")
+        return None
+
+
+def _list_xml_files_via_seven_zip(archive_path: str) -> List[str]:
+    """用7-Zip列出归档内的所有XML文件名
+
+    使用 7z l -slt 技术模式输出，解析 Path = 行获取文件名。
+
+    Args:
+        archive_path: 归档文件路径
+
+    Returns:
+        List[str]: XML文件名列表（可能含目录前缀）
+    """
+    try:
+        seven_zip_path = _check_seven_zip_available()
+        if not seven_zip_path:
+            return []
+
+        result = subprocess.run(
+            [seven_zip_path, 'l', '-slt', archive_path],
+            capture_output=True,
+            shell=True
+        )
+        if result.returncode != 0:
+            return []
+
+        output = result.stdout.decode('utf-8', errors='replace')
+        xml_files = []
+        for line in output.splitlines():
+            line = line.strip()
+            if line.startswith('Path = '):
+                name = line[len('Path = '):].strip()
+                if name.lower().endswith('.xml'):
+                    xml_files.append(name)
+        return xml_files
+    except Exception as e:
+        print(f"⚠️  使用7-Zip列出XML失败 [{archive_path}]: {str(e)[:50]}")
+        return []
 
