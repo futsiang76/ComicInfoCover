@@ -6,7 +6,8 @@ import config
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-                             QFormLayout, QLineEdit, QSpinBox, QVBoxLayout)
+                             QFileDialog, QFormLayout, QHBoxLayout, QLineEdit,
+                             QPushButton, QSpinBox, QVBoxLayout, QWidget)
 
 
 class SwitchButton(QCheckBox):
@@ -95,6 +96,24 @@ class SettingsDialog(QDialog):
         self.delete_after_convert_switch.setChecked(config.DELETE_AFTER_CONVERT)
         form_layout.addRow("写入后删除旧文件:", self.delete_after_convert_switch)
 
+        # 默认漫画目录：QLineEdit + 浏览按钮（留空则启动时提示选择）
+        self.default_dir_edit = QLineEdit()
+        self.default_dir_edit.setText(config.DEFAULT_MANGA_DIR)
+        self.default_dir_edit.setPlaceholderText("留空则启动时提示选择")
+        browse_btn = QPushButton("浏览...")
+        browse_btn.clicked.connect(self._browse_default_dir)
+        dir_widget = QWidget()
+        dir_layout = QHBoxLayout()
+        dir_layout.setContentsMargins(0, 0, 0, 0)
+        dir_layout.addWidget(self.default_dir_edit)
+        dir_layout.addWidget(browse_btn)
+        dir_widget.setLayout(dir_layout)
+        form_layout.addRow("默认漫画目录:", dir_widget)
+
+        self.remember_last_path_switch = SwitchButton()
+        self.remember_last_path_switch.setChecked(config.REMEMBER_LAST_PATH)
+        form_layout.addRow("记住上次路径:", self.remember_last_path_switch)
+
         layout.addLayout(form_layout)
 
         button_box = QDialogButtonBox(
@@ -104,6 +123,13 @@ class SettingsDialog(QDialog):
         button_box.accepted.connect(self._on_accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
+
+    def _browse_default_dir(self):
+        """浏览选择默认漫画目录（对话框起始目录优先取当前输入值）"""
+        start = self.default_dir_edit.text().strip() or config.DEFAULT_MANGA_DIR or ""
+        path = QFileDialog.getExistingDirectory(self, "选择默认漫画目录", start)
+        if path:
+            self.default_dir_edit.setText(path)
 
     def _on_accept(self):
         config.BANGUMI_ACCESS_TOKEN = self.bangumi_edit.text().strip()
@@ -115,6 +141,8 @@ class SettingsDialog(QDialog):
         config.CROP_MEMORY_ENABLED = self.crop_memory_switch.isChecked()
         config.SAVE_FORMAT = self.save_format_combo.currentData()
         config.DELETE_AFTER_CONVERT = self.delete_after_convert_switch.isChecked()
+        config.DEFAULT_MANGA_DIR = self.default_dir_edit.text().strip()
+        config.REMEMBER_LAST_PATH = self.remember_last_path_switch.isChecked()
         config.save_settings({
             "bangumi_access_token": config.BANGUMI_ACCESS_TOKEN,
             "comicvine_api_key": config.COMICVINE_API_KEY,
@@ -125,5 +153,7 @@ class SettingsDialog(QDialog):
             "crop_memory_enabled": config.CROP_MEMORY_ENABLED,
             "save_format": config.SAVE_FORMAT,
             "delete_after_convert": config.DELETE_AFTER_CONVERT,
+            "default_manga_dir": config.DEFAULT_MANGA_DIR,
+            "remember_last_path": config.REMEMBER_LAST_PATH,
         })
         self.accept()

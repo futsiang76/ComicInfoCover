@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog,
                              QTableWidgetItem, QTabWidget, QTextEdit,
                              QVBoxLayout, QWidget)
 
+import config
 from config import AUTO_TURBO_MATCH, MODE_SKIP_XMLEXIST
 
 
@@ -92,10 +93,28 @@ class MainWindow(QMainWindow):
         gear_btn.clicked.connect(lambda: SettingsDialog(self).exec())
         self.tab_widget.setCornerWidget(gear_btn)
         
-        # 加载上次保存的路径
+        # 启动路径：记住上次路径=开 → 上次路径 > 默认目录；关 → 仅默认目录；均无 → 提示选择
         settings = QSettings("ComicInfoScratcher", "ComicInfoXMLCreator")
-        last_path = settings.value("last_manga_path", "H:/Download/Manga")
-        self.path_edit.setText(last_path)
+        initial_path = self._initial_manga_path(settings)
+        if initial_path:
+            self.path_edit.setText(initial_path)
+        else:
+            self.path_edit.setPlaceholderText("请选择漫画库目录")
+
+    def _initial_manga_path(self, settings) -> str:
+        """计算启动时的漫画根目录（为空则界面提示选择，不落任何写死路径）
+
+        Args:
+            settings: QSettings 实例（组织/应用名已定）
+
+        Returns:
+            str: 启动路径；无可用路径时返回空字符串
+        """
+        if config.REMEMBER_LAST_PATH:
+            last_path = settings.value("last_manga_path", "")
+            if last_path:
+                return str(last_path).strip()
+        return (config.DEFAULT_MANGA_DIR or "").strip()
 
     def create_scan_tab(self):
         """创建扫描标签页"""
@@ -106,16 +125,17 @@ class MainWindow(QMainWindow):
         build_results_tab(self, self.tab_widget)
 
     def browse_path(self):
-        """浏览路径"""
-        current_path = self.path_edit.text().strip()
-        if not current_path:
-            current_path = "H:/Download/Manga"
+        """浏览路径：保存到 QSettings；默认目录未配置时首次引导写入 config"""
+        current_path = self.path_edit.text().strip() or config.DEFAULT_MANGA_DIR or ""
         path = QFileDialog.getExistingDirectory(self, "选择漫画根目录", current_path)
         if path:
             self.path_edit.setText(path)
-            # 保存路径到 QSettings
+            # 保存路径到 QSettings（记住上次路径依赖）
             settings = QSettings("ComicInfoScratcher", "ComicInfoXMLCreator")
             settings.setValue("last_manga_path", path)
+            # 首次引导：默认目录为空时同步写入 config，无记忆也能回到该目录
+            if not config.DEFAULT_MANGA_DIR:
+                config.save_settings({"default_manga_dir": path})
 
 
     def start_scan(self):

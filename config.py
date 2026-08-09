@@ -26,6 +26,8 @@ DEFAULT_SETTINGS = {
     "crop_memory_enabled": True,   # 封面裁剪定位记忆开关（默认开启）
     "save_format": "keep",         # 保存格式：keep/cbz/zip/cb7
     "delete_after_convert": True,  # 手动格式转换成功后是否删除原文件
+    "default_manga_dir": "",       # 默认漫画目录（留空则启动时提示选择）
+    "remember_last_path": True,    # 记住上次路径开关（开启则启动优先用上次目录）
 }
 
 
@@ -80,6 +82,8 @@ SETTINGS_ATTR_MAP = {
     "crop_memory_enabled": "CROP_MEMORY_ENABLED",
     "save_format": "SAVE_FORMAT",
     "delete_after_convert": "DELETE_AFTER_CONVERT",
+    "default_manga_dir": "DEFAULT_MANGA_DIR",
+    "remember_last_path": "REMEMBER_LAST_PATH",
 }
 
 
@@ -130,6 +134,10 @@ CROP_MEMORY_ENABLED = _user_config.get("crop_memory_enabled",
 SAVE_FORMAT = _user_config.get("save_format", DEFAULT_SETTINGS["save_format"])
 DELETE_AFTER_CONVERT = _user_config.get("delete_after_convert",
                                         DEFAULT_SETTINGS["delete_after_convert"])
+DEFAULT_MANGA_DIR = _user_config.get("default_manga_dir",
+                                     DEFAULT_SETTINGS["default_manga_dir"])
+REMEMBER_LAST_PATH = _user_config.get("remember_last_path",
+                                      DEFAULT_SETTINGS["remember_last_path"])
 
 # 保存格式 → 目标扩展名（None 表示保持原格式）
 SAVE_FORMAT_EXT = {
