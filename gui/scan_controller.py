@@ -28,8 +28,8 @@ def _lock_controls(mw) -> None:
     source_combo = getattr(mw, "source_combo", None)
     if source_combo is not None:
         source_combo.setEnabled(False)
-    # 锁定目录输入/浏览/编辑XML（控件可能不存在，getattr 防御）
-    for attr in ("path_edit", "browse_btn", "edit_xml_btn"):
+    # 锁定目录输入/浏览/编辑XML/无人值守（控件可能不存在，getattr 防御）
+    for attr in ("path_edit", "browse_btn", "edit_xml_btn", "auto_turbo_check"):
         widget = getattr(mw, attr, None)
         if widget is not None:
             widget.setEnabled(False)
@@ -45,8 +45,8 @@ def _unlock_controls(mw) -> None:
     source_combo = getattr(mw, "source_combo", None)
     if source_combo is not None:
         source_combo.setEnabled(True)
-    # 恢复目录输入/浏览/编辑XML（控件可能不存在，getattr 防御）
-    for attr in ("path_edit", "browse_btn", "edit_xml_btn"):
+    # 恢复目录输入/浏览/编辑XML/无人值守（控件可能不存在，getattr 防御）
+    for attr in ("path_edit", "browse_btn", "edit_xml_btn", "auto_turbo_check"):
         widget = getattr(mw, attr, None)
         if widget is not None:
             widget.setEnabled(True)
