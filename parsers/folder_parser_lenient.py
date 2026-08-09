@@ -41,7 +41,7 @@ TAG_BLACKLIST = {
 }
 COMPLETE_WORDS = ("全", "完结", "完", "end", "completed", "fin", "complete")
 _HINTS_COMPLETE = ("完结", "end", "completed", "fin", "complete")   # tag 分支只认多字词
-_HINTS_ONGOING = ("未完结", "连载中", "连载", "ongoing", "未完")
+_HINTS_ONGOING = ("未完结", "连载中", "ongoing", "未完")   # 「连载」是版本属性（连载版）非连载状态，不列入
 _CN_DIGITS = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "零": 0}
 _BRACKET_OPEN = set("[（(")
 _BRACKET_CLOSE = set("]）)")
