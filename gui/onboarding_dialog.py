@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """首次启动轻引导对话框 - 极简配置引导（10秒完成，不挡路）"""
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QVBoxLayout, QWidget)
 
@@ -80,8 +80,13 @@ class OnboardingDialog(QDialog):
 
     def _on_start_use(self) -> None:
         """保存默认目录 + 标记首次引导完成，然后关闭对话框"""
+        manga_dir = self.dir_edit.text().strip()
         config.save_settings({
-            "default_manga_dir": self.dir_edit.text().strip(),
+            "default_manga_dir": manga_dir,
             "first_run_done": True,
         })
+        # 填了目录则覆盖记住的上次路径残留：主窗体无论开关状态都用新目录
+        if manga_dir:
+            QSettings("ComicInfoScratcher", "ComicInfoXMLCreator").setValue(
+                "last_manga_path", manga_dir)
         self.accept()
