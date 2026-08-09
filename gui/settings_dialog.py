@@ -6,8 +6,9 @@ import config
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-                             QFileDialog, QFormLayout, QHBoxLayout, QLineEdit,
-                             QPushButton, QSpinBox, QVBoxLayout, QWidget)
+                             QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
+                             QLineEdit, QPushButton, QSpinBox, QVBoxLayout,
+                             QWidget)
 
 
 class SwitchButton(QCheckBox):
@@ -45,42 +46,55 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        form_layout = QFormLayout()
+        # ===== 1. 源配置 =====
+        source_group = QGroupBox("源配置")
+        source_form = QFormLayout()
+        source_group.setLayout(source_form)
 
         # API Key 配置（密码模式，写入 user_config.json）
         self.bangumi_edit = QLineEdit()
         self.bangumi_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.bangumi_edit.setText(config.BANGUMI_ACCESS_TOKEN)
-        form_layout.addRow("Bangumi Access Token:", self.bangumi_edit)
+        source_form.addRow("Bangumi Access Token:", self.bangumi_edit)
 
         self.comicvine_edit = QLineEdit()
         self.comicvine_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.comicvine_edit.setText(config.COMICVINE_API_KEY)
-        form_layout.addRow("ComicVine API Key:", self.comicvine_edit)
+        source_form.addRow("ComicVine API Key:", self.comicvine_edit)
+
+        layout.addWidget(source_group)
+
+        # ===== 2. 扫描配置 =====
+        scan_group = QGroupBox("扫描配置")
+        scan_form = QFormLayout()
+        scan_group.setLayout(scan_form)
 
         self.fuzz_spin = QSpinBox()
         self.fuzz_spin.setRange(0, 100)
         self.fuzz_spin.setValue(config.FUZZ_THRESHOLD)
-        form_layout.addRow("作品名模糊匹配阈值 (%):", self.fuzz_spin)
+        scan_form.addRow("作品名模糊匹配阈值 (%):", self.fuzz_spin)
 
         self.author_spin = QSpinBox()
         self.author_spin.setRange(0, 100)
         self.author_spin.setValue(config.AUTHOR_MATCH_THRESHOLD)
-        form_layout.addRow("作者名匹配阈值 (%):", self.author_spin)
+        scan_form.addRow("作者名匹配阈值 (%):", self.author_spin)
 
         self.timeout_spin = QSpinBox()
         self.timeout_spin.setRange(1, 60)
         self.timeout_spin.setValue(config.TIMEOUT)
-        form_layout.addRow("请求超时时间 (秒):", self.timeout_spin)
+        scan_form.addRow("请求超时时间 (秒):", self.timeout_spin)
 
         self.retries_spin = QSpinBox()
         self.retries_spin.setRange(0, 10)
         self.retries_spin.setValue(config.MAX_RETRIES)
-        form_layout.addRow("请求重试次数:", self.retries_spin)
+        scan_form.addRow("请求重试次数:", self.retries_spin)
 
-        self.crop_memory_switch = SwitchButton()
-        self.crop_memory_switch.setChecked(config.CROP_MEMORY_ENABLED)
-        form_layout.addRow("封面裁剪定位记忆:", self.crop_memory_switch)
+        layout.addWidget(scan_group)
+
+        # ===== 3. 扫描结果处理 =====
+        result_group = QGroupBox("扫描结果处理")
+        result_form = QFormLayout()
+        result_group.setLayout(result_form)
 
         # 保存格式：keep/cbz/zip/cb7（默认保持原格式）
         self.save_format_combo = QComboBox()
@@ -90,11 +104,18 @@ class SettingsDialog(QDialog):
         self.save_format_combo.addItem("CB7 (.cb7)", "cb7")
         index = self.save_format_combo.findData(config.SAVE_FORMAT)
         self.save_format_combo.setCurrentIndex(index if index >= 0 else 0)
-        form_layout.addRow("保存格式:", self.save_format_combo)
+        result_form.addRow("保存格式:", self.save_format_combo)
 
         self.delete_after_convert_switch = SwitchButton()
         self.delete_after_convert_switch.setChecked(config.DELETE_AFTER_CONVERT)
-        form_layout.addRow("写入后删除旧文件:", self.delete_after_convert_switch)
+        result_form.addRow("写入后删除旧文件:", self.delete_after_convert_switch)
+
+        layout.addWidget(result_group)
+
+        # ===== 4. 应用目录 =====
+        dir_group = QGroupBox("应用目录")
+        dir_form = QFormLayout()
+        dir_group.setLayout(dir_form)
 
         # 默认漫画目录：QLineEdit + 浏览按钮（留空则启动时提示选择）
         self.default_dir_edit = QLineEdit()
@@ -108,13 +129,24 @@ class SettingsDialog(QDialog):
         dir_layout.addWidget(self.default_dir_edit)
         dir_layout.addWidget(browse_btn)
         dir_widget.setLayout(dir_layout)
-        form_layout.addRow("默认漫画目录:", dir_widget)
+        dir_form.addRow("默认漫画目录:", dir_widget)
 
         self.remember_last_path_switch = SwitchButton()
         self.remember_last_path_switch.setChecked(config.REMEMBER_LAST_PATH)
-        form_layout.addRow("记住上次路径:", self.remember_last_path_switch)
+        dir_form.addRow("记住上次路径:", self.remember_last_path_switch)
 
-        layout.addLayout(form_layout)
+        layout.addWidget(dir_group)
+
+        # ===== 5. 封面裁剪（放最后） =====
+        crop_group = QGroupBox("封面裁剪")
+        crop_form = QFormLayout()
+        crop_group.setLayout(crop_form)
+
+        self.crop_memory_switch = SwitchButton()
+        self.crop_memory_switch.setChecked(config.CROP_MEMORY_ENABLED)
+        crop_form.addRow("封面裁剪定位记忆:", self.crop_memory_switch)
+
+        layout.addWidget(crop_group)
 
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok
