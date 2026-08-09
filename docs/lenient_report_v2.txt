@@ -1,0 +1,56 @@
+========================================================================
+H:/Comics/日漫 全库解析实测（parse_folder_name_lenient）v2
+========================================================================
+扫描目录总数: 1897  = 作品1791 + 作者目录104 + 卷子目录2
+
+-- 按大类（作品目录）--
+  大师作品集: 作品936  抛错0  可疑0  complete=True 864  有卷号 892  卷号与目录名不符 0
+  完结: 作品697  抛错0  可疑1  complete=True 692  有卷号 697  卷号与目录名不符 1
+  未完结: 作品158  抛错0  可疑0  complete=True 0  有卷号 0  卷号与目录名不符 0
+
+-- 跨库一致性检查 --
+  [完结库] 有卷号但 complete=False 的作品: 0/697
+  [未完结库] complete=True 的作品: 0/158
+  [大师作品集] complete=True: 864/936
+
+-- 卷号提取正确性抽查（完结库前20个 (V..全) 案例）--
+  OK  [Ark Performance] 机动战士高达 MSV-R 强尼.莱汀的归来 (V23全) -> total=23 complete=True vol_type=已完结
+  OK  [C.H.LINE×太田垣康男] 前线任务 (V10全) -> total=10 complete=True vol_type=已完结
+  OK  [あき] 神的乐园 [奥林匹斯] (V02全) -> total=2 complete=True vol_type=已完结
+  OK  [あさぎ桜×隅沢克之] 新機動戦記ガンダムW Frozen Teardrop 小说插图 (V09全) -> total=9 complete=True vol_type=已完结
+  OK  [あさぎ樱] GUNDAM W-Blind Target (V01全) -> total=1 complete=True vol_type=已完结
+  OK  [あだちとか] 流浪神差 (V27全) -> total=27 complete=True vol_type=已完结
+  OK  [あやめぐむ] Ar tonelico2 魔塔大陸Ⅱ (V03全) -> total=3 complete=True vol_type=已完结
+  OK  [アビディ井上] 摸鱼上班族饴谷甘太朗 (V02全) -> total=2 complete=True vol_type=已完结
+  OK  [アントンシク] 元魔子 (V05全) -> total=5 complete=True vol_type=已完结
+  OK  [八木教广] 大剑 [猎魔战记][文化传信] (V27全) -> total=27 complete=True vol_type=已完结
+  OK  [八木教广] 猎魔战记 [大剑][长鸿] (V27全) -> total=27 complete=True vol_type=已完结
+  OK  [八神健] 复制有纱 (V01全) -> total=1 complete=True vol_type=已完结
+  OK  [八神健] 独角兽少年 (V03全) -> total=3 complete=True vol_type=已完结
+  OK  [八神健] 生死恋 (V07全) -> total=7 complete=True vol_type=已完结
+  OK  [冲方丁×大今良時] 壳中少女 (V07全) -> total=7 complete=True vol_type=已完结
+  OK  [冲本秀×亚树直] 心理医恭介 (V04全) -> total=4 complete=True vol_type=已完结
+  OK  [出口真人] Tomorrows 为明日而战！ (V04全) -> total=4 complete=True vol_type=已完结
+  OK  [出店宇生×大井昌和] 爱因修坦1904 (V02全) -> total=2 complete=True vol_type=已完结
+  OK  [出水ぽすか×白井カイウ] 约定的梦幻岛 (V20全+机密圣经) -> total=20 complete=True vol_type=已完结
+  OK  [别天荒人] 再见明日 (V04全) -> total=4 complete=True vol_type=已完结
+
+-- 别名/tag 提取抽查（含 [别名] 或 (tag) 的案例，每类5个）--
+  [大师作品集] [Boichi] Origin 源型机 (V10全 连载版+外传)
+      aliases=[] tags=['连载版+外传'] extras=外传
+  [完结] [あき] 神的乐园 [奥林匹斯] (V02全)
+      aliases=['奥林匹斯'] tags=[] extras=
+  [未完结] [白鸟うしお] 异语 [怪奇物语]
+      aliases=['怪奇物语'] tags=[] extras=
+
+========================================================================
+异常/可疑案例清单
+========================================================================
+[完结] 完结\S-T\[toufu] LV1魔王与独居废勇者 [Lv1魔王与单人房勇者] (V11全)
+    目录名: [toufu] LV1魔王与独居废勇者 [Lv1魔王与单人房勇者] (V11全)
+    解析: {"author": "toufu", "series": "LV1魔王与独居废勇者", "aliases": ["Lv1魔王与单人房勇者"], "tags": [], "vol_info": "V11全", "total_volumes": 11, "vol_type": "已完结", "complete": true, "has_extras": false, "extras": ""}
+    问题: series疑似含残留:LV1魔王与独居废勇者
+
+-- 卷号与目录名不符（vol_mismatch）全部清单 --
+共 1 个:
+  [完结] [toufu] LV1魔王与独居废勇者 [Lv1魔王与单人房勇者] (V11全)  -> parsed total=11 (name卷=1)

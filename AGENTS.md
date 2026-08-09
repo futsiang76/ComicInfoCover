@@ -79,3 +79,8 @@ Search before Read. Read before Edit. Edit minimally. Preserve existing architec
   - 人机联调问题汇总.md — 联调待办
 - STRUCTURE.md — 本目录下的目录结构一览
 - 来源项目：`F:\MyProject\006_ComicInfoScratcher\`、`F:\MyProject\007_zipCoverCropper\`（只读，不修改）
+
+## 公共 assets
+
+- 跨项目复用素材（GIF/图片/图标等）统一放 `H:/obsidian-vault/_assets/`（如 loading-gifs/ 下有小猫加载动画 loading_cat1.gif / loading_cat2.gif；png-icons/ 下有 45 个透明 PNG icon：alarm/calendar/email/HR/law/halalIndonesia 等，PPT/编程界面 UI 通用）
+- 新项目需要动画/图片素材时，先查 `H:/obsidian-vault/_assets/` 再决定新建
