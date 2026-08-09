@@ -26,7 +26,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # ---- 子模块统一导出（旧 import 路径兼容，各模块见自身 docstring）----
 from .bangumi_comicinfo import build_comicinfo
 from .bangumi_genre import BANGUMI_GENRE_WHITELIST, extract_bangumi_genre
-from .bangumi_search_parse import _parse_search_response
 from .bangumi_source import (_ACTIVE_SOURCE, _WEB_BROWSER_UA, _api_base_for_source,
                              _web_mirror_from_api, get_active_bangumi_source,
                              set_active_bangumi_source)
@@ -107,18 +106,19 @@ class BangumiFetcher:
     def search_manga(self, keyword: str, folder_info: Optional[Dict] = None) -> List[Dict]:
         """搜索漫画，返回所有匹配结果（前10个）
 
-        统一走 v2 GET {base}/search/subject/{keyword}（官方与镜像均支持，
-        镜像不支持旧 POST /v0/search/subjects）；直连所选数据源域名，
-        不做自动 failover。
+        统一走 v0 POST {base}/v0/search/subjects?limit=10（官方与镜像均支持），
+        payload {"keyword": ..., "filter": {"type": [1]}}；直连所选数据源域名，
+        不做自动 failover。series/platform/images 字段由 v0 POST 直接提供。
         """
         try:
             keyword_cn = convert(keyword, "zh-cn")
-            path = f"/search/subject/{quote(keyword_cn)}"
-            params = {"type": 1, "responseGroup": "small"}  # 1=书籍/漫画
-
-            data = self._request_json("GET", path, params=params)
-            # v2 GET response: {"results": <total int>, "list": [...]} - real items in list
-            results = _parse_search_response(data)
+            path = "/v0/search/subjects"
+            params = {"limit": SHOW_TOP_N}  # 1=书籍/漫画 type 过滤放 payload
+            payload = {"keyword": keyword_cn, "filter": {"type": [1]}}
+            data = self._request_json("POST", path, params=params, json_payload=payload)
+            # v0 POST response: {"data": [...]} - real items in data
+            results = [item for item in data.get("data", [])
+                       if isinstance(item, dict)]
 
             # 逐条过滤：series=False 且名称带「卷号标记」的条目（系列的单卷）剔除；
             # 保留系列(series=True)、外传/原画集/设定集/一卷全(series=False 但无卷号标记)。

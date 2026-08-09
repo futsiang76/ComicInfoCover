@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Bangumi 数据源直连与 v2 GET 搜索解析测试
+"""Bangumi 数据源直连与 v0 POST 搜索解析测试
 
 覆盖：
 - 按源直连：_api_base_for_source / _web_mirror_from_api 映射
 - set_active_bangumi_source：切换模块级当前源，新 fetcher 默认跟随
 - _request_json：直连所选源；失败即报错，不做自动 failover/重试
-- v2 GET 搜索响应解析（_parse_search_response）：list 字段/字段映射/容错
-- search_manga 走 v2 GET 路径与所选源参数
+- v0 POST 搜索响应解析（data 字段）：search_manga 走 POST /v0/search/subjects
 - get_manga_detail 直连所选源，失败返回 None
 """
 
 from unittest.mock import MagicMock
-from urllib.parse import quote
 
 import requests
 
@@ -20,7 +18,6 @@ import pytest
 
 import config
 from models.bangumi_fetcher import (_api_base_for_source,
-                                    _parse_search_response,
                                     _web_mirror_from_api, BangumiFetcher,
                                     set_active_bangumi_source)
 
@@ -140,7 +137,7 @@ class TestRequestJsonDirectConnect:
         fetcher.session.request = MagicMock(
             side_effect=requests.exceptions.ConnectionError("blocked"))
         with pytest.raises(requests.exceptions.ConnectionError):
-            fetcher._request_json("GET", "/search/subject/foo")
+            fetcher._request_json("GET", "/v0/search/subjects")
         fetcher.session.request.assert_called_once()
 
     def test_mirror_fails_no_failover(self):
@@ -148,7 +145,7 @@ class TestRequestJsonDirectConnect:
         fetcher.session.request = MagicMock(
             side_effect=requests.exceptions.Timeout("slow"))
         with pytest.raises(requests.exceptions.Timeout):
-            fetcher._request_json("GET", "/search/subject/foo")
+            fetcher._request_json("GET", "/v0/search/subjects")
         fetcher.session.request.assert_called_once()
 
     def test_5xx_raises(self):
@@ -156,80 +153,109 @@ class TestRequestJsonDirectConnect:
         fetcher.session.request = MagicMock(
             return_value=JsonResponse({}, status_code=503))
         with pytest.raises(requests.exceptions.HTTPError):
-            fetcher._request_json("GET", "/search/subject/foo")
+            fetcher._request_json("GET", "/v0/search/subjects")
         fetcher.session.request.assert_called_once()
 
 
-class TestParseSearchResponse:
-    """测试 v2 GET 搜索响应解析（list 字段 + 字段映射）"""
+class TestSearchMangaV0Post:
+    """测试 search_manga 走 v0 POST /v0/search/subjects 端点与参数（直连所选源）
 
-    def test_list_field_is_items(self):
-        """真实条目在 list 字段；results 是 int 总数"""
-        data = {
-            "results": 3,
-            "list": [
-                {"id": 1, "name": "作品A", "name_cn": "", "series": True},
-                {"id": 2, "name": "作品B", "name_cn": "作品B中文", "series": False},
-                {"id": 3, "name": "作品C", "name_cn": "", "series": False},
-            ],
-        }
-        items = _parse_search_response(data)
-        assert len(items) == 3
-        assert items[0]["id"] == 1
-        assert items[1]["name_cn"] == "作品B中文"
-        assert items[0]["series"] is True
+    v0 POST response: {"data": [...]} - series/platform/images 由接口直接提供
+    """
 
-    def test_results_int_is_not_list(self):
-        data = {"results": 2, "list": [{"id": 1}, {"id": 2}]}
-        items = _parse_search_response(data)
-        assert [i["id"] for i in items] == [1, 2]
-
-    def test_missing_list_returns_empty(self):
-        assert _parse_search_response({"results": 0}) == []
-        assert _parse_search_response({}) == []
-
-    def test_list_non_dict_items_skipped(self):
-        data = {"results": 2, "list": [{"id": 1}, "junk", None, 3]}
-        items = _parse_search_response(data)
-        assert [i["id"] for i in items] == [1]
-
-    def test_images_normalized(self):
-        data = {"results": 1, "list": [{"id": 1, "name": "A"}]}
-        items = _parse_search_response(data)
-        assert items[0]["images"] == {}
-        assert items[0]["images"].get("large") is None
-
-    def test_field_mapping_keeps_summary_country(self):
-        data = {"results": 1, "list": [{
-            "id": 42, "name": "原作", "name_cn": "中文名",
-            "summary": "简介", "country": "日本", "date": "2020-01-01",
-            "volumes": 5, "infobox": [],
-        }]}
-        item = _parse_search_response(data)[0]
-        assert item["summary"] == "简介"
-        assert item["country"] == "日本"
-        assert item["volumes"] == 5
-        assert item["infobox"] == []
-
-
-class TestSearchMangaV2Get:
-    """测试 search_manga 走 v2 GET 端点与参数（直连所选源）"""
-
-    def test_uses_v2_get_endpoint_official(self, monkeypatch):
+    def test_uses_v0_post_endpoint_official(self, monkeypatch):
         monkeypatch.setattr(config, "BANGUMI_MIRRORS", [OFFICIAL, MIRROR1])
         fetcher = BangumiFetcher(source=config.BANGUMI_SOURCE_OFFICIAL)
         fetcher.get_manga_detail = MagicMock(return_value=None)
 
         def side_effect(method, url, **kwargs):
-            assert method == "GET"
-            assert url.startswith(OFFICIAL + "/search/subject/")
-            assert kwargs["params"] == {"type": 1, "responseGroup": "small"}
-            return JsonResponse({"results": 1, "list": [
+            assert method == "POST"
+            assert url == OFFICIAL + "/v0/search/subjects"
+            assert kwargs["params"] == {"limit": 10}
+            assert kwargs["json"] == {
+                "keyword": "测试作品", "filter": {"type": [1]}}
+            return JsonResponse({"data": [
                 {"id": 10, "name": "测试作品", "name_cn": "", "series": True}]})
 
         fetcher.session.request = MagicMock(side_effect=side_effect)
-        results = fetcher.search_manga("测试作品")
+        results = fetcher.search_manga("測試作品")  # 繁体输入 → payload 简体
         assert [r["id"] for r in results] == [10]
+
+    def test_v0_data_field_is_items(self, monkeypatch):
+        """真实条目在 data 字段；series/platform 直接可用"""
+        monkeypatch.setattr(config, "BANGUMI_MIRRORS", [OFFICIAL, MIRROR1])
+        fetcher = BangumiFetcher(source=config.BANGUMI_SOURCE_OFFICIAL)
+        fetcher.get_manga_detail = MagicMock(return_value=None)
+        fetcher.session.request = MagicMock(return_value=JsonResponse({
+            "data": [
+                {"id": 1, "name": "作品A", "name_cn": "作品A", "series": True,
+                 "platform": "漫画"},
+                {"id": 2, "name": "作品B", "name_cn": "作品B",
+                 "series": False, "platform": "漫画"},
+            ]}))
+        results = fetcher.search_manga("作品")
+        assert len(results) == 2
+        assert results[0]["series"] is True
+        assert results[0]["platform"] == "漫画"
+
+    def test_missing_data_returns_empty(self, monkeypatch):
+        monkeypatch.setattr(config, "BANGUMI_MIRRORS", [OFFICIAL, MIRROR1])
+        fetcher = BangumiFetcher(source=config.BANGUMI_SOURCE_OFFICIAL)
+        fetcher.get_manga_detail = MagicMock(return_value=None)
+        fetcher.session.request = MagicMock(return_value=JsonResponse({}))
+        assert fetcher.search_manga("测试作品") == []
+
+    def test_images_field_kept(self, monkeypatch):
+        """v0 POST 直接提供 images（镜像已重写域名），无需归一"""
+        monkeypatch.setattr(config, "BANGUMI_MIRRORS", [OFFICIAL, MIRROR1])
+        fetcher = BangumiFetcher(source=config.BANGUMI_SOURCE_OFFICIAL)
+        fetcher.get_manga_detail = MagicMock(return_value=None)
+        fetcher.session.request = MagicMock(return_value=JsonResponse({
+            "data": [{"id": 1, "name": "作品A", "name_cn": "",
+                      "images": {"large": "https://lain.bangumi.lol/a.jpg"}}]}))
+        results = fetcher.search_manga("作品A")
+        assert results[0]["images"]["large"] == "https://lain.bangumi.lol/a.jpg"
+
+    def test_data_non_dict_items_skipped(self, monkeypatch):
+        """data 内非 dict 条目跳过，仅保留 dict"""
+        monkeypatch.setattr(config, "BANGUMI_MIRRORS", [OFFICIAL, MIRROR1])
+        fetcher = BangumiFetcher(source=config.BANGUMI_SOURCE_OFFICIAL)
+        fetcher.get_manga_detail = MagicMock(return_value=None)
+        fetcher.session.request = MagicMock(return_value=JsonResponse({
+            "data": [{"id": 1, "name": "作品A", "name_cn": "作品A",
+                      "series": True}, "junk", None, 3]}))
+        results = fetcher.search_manga("作品")
+        assert [r["id"] for r in results] == [1]
+
+    def test_total_field_ignored(self, monkeypatch):
+        """v0 POST 响应含 total 总数，真实条目只在 data"""
+        monkeypatch.setattr(config, "BANGUMI_MIRRORS", [OFFICIAL, MIRROR1])
+        fetcher = BangumiFetcher(source=config.BANGUMI_SOURCE_OFFICIAL)
+        fetcher.get_manga_detail = MagicMock(return_value=None)
+        fetcher.session.request = MagicMock(return_value=JsonResponse({
+            "total": 100, "data": [
+                {"id": 1, "name": "作品A", "name_cn": "作品A", "series": True},
+                {"id": 2, "name": "作品B", "name_cn": "作品B", "series": False},
+            ]}))
+        results = fetcher.search_manga("作品")
+        assert [r["id"] for r in results] == [1, 2]
+
+    def test_field_mapping_keeps_summary_country(self, monkeypatch):
+        """v0 POST 条目保留 summary/country/date/volumes/infobox 等字段"""
+        monkeypatch.setattr(config, "BANGUMI_MIRRORS", [OFFICIAL, MIRROR1])
+        fetcher = BangumiFetcher(source=config.BANGUMI_SOURCE_OFFICIAL)
+        fetcher.get_manga_detail = MagicMock(return_value=None)
+        fetcher.session.request = MagicMock(return_value=JsonResponse({
+            "data": [{
+                "id": 42, "name": "原作", "name_cn": "原作",
+                "summary": "简介", "country": "日本", "date": "2020-01-01",
+                "volumes": 5, "infobox": [], "series": True,
+            }]}))
+        item = fetcher.search_manga("原作")[0]
+        assert item["summary"] == "简介"
+        assert item["country"] == "日本"
+        assert item["volumes"] == 5
+        assert item["infobox"] == []
 
     def test_mirror_source_search_uses_mirror_base(self, monkeypatch):
         monkeypatch.setattr(config, "BANGUMI_MIRRORS", [OFFICIAL, MIRROR1])
@@ -239,13 +265,13 @@ class TestSearchMangaV2Get:
 
         def side_effect(method, url, **kwargs):
             urls.append(url)
-            return JsonResponse({"results": 1, "list": [
+            return JsonResponse({"data": [
                 {"id": 20, "name": "测试作品", "name_cn": "", "series": True}]})
 
         fetcher.session.request = MagicMock(side_effect=side_effect)
         results = fetcher.search_manga("测试作品")
         assert [r["id"] for r in results] == [20]
-        assert urls == [f"{MIRROR1}/search/subject/{quote('测试作品')}"]
+        assert urls == [f"{MIRROR1}/v0/search/subjects"]
 
     def test_mirror_failure_no_switch_to_official(self, monkeypatch):
         """镜像失败 → 搜索报错返回空，不自动切官方"""
