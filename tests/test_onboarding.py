@@ -80,7 +80,7 @@ def test_onboarding_hint_text_exact(qtbot):
     dialog = OnboardingDialog()
     qtbot.addWidget(dialog)
     assert dialog.hint_label.text() == HINT_TEXT
-    assert HINT_TEXT == "数据源需要网络连接；软件会自动检测网络环境选择 Bangumi 官方或大陆镜像"
+    assert HINT_TEXT == "扫描时需联网；大陆镜像已内置；部分源需要科学。"
 
 
 def test_onboarding_start_use_saves_config(qtbot, monkeypatch):

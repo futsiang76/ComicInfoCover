@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
 
 import config
 
-HINT_TEXT = "数据源需要网络连接；软件会自动检测网络环境选择 Bangumi 官方或大陆镜像"
+HINT_TEXT = "扫描时需联网；大陆镜像已内置；部分源需要科学。"
 
 
 class OnboardingDialog(QDialog):
@@ -54,15 +54,10 @@ class OnboardingDialog(QDialog):
         dir_widget.setLayout(dir_layout)
         layout.addWidget(dir_widget)
 
-        # 一行提示：可选源说明，不展开技术细节
+        # 一行提示：联网/镜像/科学 一句话说明，不展开技术细节
         self.hint_label = QLabel(HINT_TEXT)
-        self.hint_label.setStyleSheet("font-size: 11px; color: #757575;")
+        self.hint_label.setStyleSheet("font-size: 12px; color: #424242;")
         layout.addWidget(self.hint_label)
-
-        # 网络提示：数据源需联网；Bangumi 内置大陆镜像，连不上可本地手填
-        self.network_hint_label = QLabel("数据源需要网络连接；Bangumi 已内置大陆镜像，无法连接时可改用本地手填")
-        self.network_hint_label.setStyleSheet("font-size: 11px; color: #757575;")
-        layout.addWidget(self.network_hint_label)
 
         layout.addSpacing(8)
 
