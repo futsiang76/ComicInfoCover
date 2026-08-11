@@ -302,55 +302,6 @@ class SingleSeriesProcessor:
             return False
 
 
-    def run_interactive(self):
-        """交互式运行单系列处理"""
-        
-        print("\n📝 单系列处理模式")
-        print("💡 提示：输入q退出，输入路径继续处理下一个文件夹")
-        
-        while True:
-            # 第一步：获取文件夹路径
-            folder_path = input("\n请输入漫画文件夹路径 (输入q退出): ").strip().strip('"')
-            
-            # 检查是否退出
-            if folder_path.lower() == 'q':
-                print("👋 退出单系列处理模式")
-                return
-            
-            if not folder_path:
-                print("❌ 未输入文件夹路径")
-                continue
-            
-            print(f"✅ 文件夹路径: {folder_path}")
-            
-            # 第二步：获取Bangumi ID
-            bangumi_id_input = input("请输入Bangumi ID (输入0使用本地信息): ").strip()
-            if not bangumi_id_input:
-                print("❌ 未输入Bangumi ID")
-                continue
-            
-            try:
-                bangumi_id = int(bangumi_id_input)
-            except ValueError:
-                print("❌ Bangumi ID必须是数字")
-                continue
-            
-            print(f"✅ Bangumi ID: {bangumi_id}")
-            
-            # 第三步：按ID搜索并处理
-            if bangumi_id == 0:
-                print(f"\n📋 使用本地文件夹信息写入")
-                success = self.process_folder_with_local_info(folder_path)
-            else:
-                print(f"\n🔍 正在按Bangumi ID查找: {bangumi_id}")
-                success = self.process_folder_with_id(folder_path, bangumi_id)
-            
-            if success:
-                print("✅ 单系列处理完成")
-            else:
-                print("❌ 单系列处理失败")
-
-
 def create_single_series_processor(fetcher: Optional[BangumiFetcher] = None) -> SingleSeriesProcessor:
     """创建单系列处理器实例
     

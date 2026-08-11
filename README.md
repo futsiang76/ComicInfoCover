@@ -21,14 +21,6 @@ pip install requests PyQt6 thefuzz zhconv
 
 ## 使用方法
 
-### 命令行模式
-
-1. 修改 `config.py` 中的配置（主要是BANGUMI_ACCESS_TOKEN）
-2. 运行主程序：
-```bash
-python main.py
-```
-
 ### 图形界面模式
 
 ```bash
@@ -68,7 +60,6 @@ AUTO_TURBO_MATCH = 1  # 开启无人值守速通模式
 
 ```
 ComicInfoScratcher/
-├── main.py                   # 主程序入口
 ├── gui_app.py                # GUI应用入口
 ├── config.py                 # 配置和常量
 ├── models/

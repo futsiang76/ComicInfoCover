@@ -2,7 +2,6 @@
 
 ```
 ComicInfoScratcher/
-├── main.py                   # 主程序入口
 ├── config.py                 # 配置和常量
 ├── secrets.py                # API密钥（本地，不提交）
 ├── AGENTS.md                 # Agent 工作规则
@@ -40,7 +39,7 @@ ComicInfoScratcher/
 ├── processors/               # 业务逻辑处理
 │   ├── batch_processor.py    # 批量处理器（核心协调流程）
 │   ├── folder_recursive_handler.py  # 文件夹递归扫描
-│   ├── folder_processors.py  # 文件夹级处理函数
+│   ├── folder_processors.py  # re-export 中转（CLI 已移除）
 │   ├── scan_processors.py    # 核心扫描逻辑
 │   ├── result_builder.py     # 结果字典构建
 │   ├── zip_handler.py        # FileHandler（文件添加/验证）

@@ -33,7 +33,8 @@ from processors.xml_template_handler import create_xml_template_handler
 from processors.zip_handler import create_file_handler
 from processors.xml_mode_handler import create_xml_mode_handler
 
-from .folder_processors import (process_normal_folder, process_short_story_folder)
+from .scan_processors import process_normal_folder
+from .utils import process_short_story_folder
 
 from .result_builder import create_result_dict, create_result_dict_from_xml
 

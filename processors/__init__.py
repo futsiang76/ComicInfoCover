@@ -5,7 +5,6 @@
 """
 
 # 导入所有处理器模块的创建函数
-from .folder_processors import batch_process
 from .choice_handlers import create_choice_handlers
 from .folder_recursive_handler import create_folder_recursive_handler
 from .interaction_handler import create_interaction_handler
@@ -29,9 +28,6 @@ from .xml_template_handler import XMLTemplateHandler
 from .zip_handler import FileHandler
 
 __all__ = [
-    # 主处理器函数
-    'batch_process',
-    
     # 创建函数
     'create_choice_handlers',
     'create_folder_recursive_handler',
