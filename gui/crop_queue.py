@@ -5,8 +5,8 @@
 收集当前结果页所有 ratio_ok=False 的封面为队列；对话框确定后由 _CropWorker
 后台裁剪重打包，完成后自动打开下一张；跳过直接推进下一张；取消结束本次流程。
 """
-from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtWidgets import QDialog, QMessageBox
+from PySide6.QtCore import QThread, Signal
+from PySide6.QtWidgets import QDialog, QMessageBox
 
 from gui.crop_dialog import CropDialog
 from processors.cover_crop import crop_zip_cover
@@ -16,8 +16,8 @@ from processors.cover_utils import sort_volume_files
 class _CropWorker(QThread):
     """后台执行封面裁剪 + ZIP 重打包，避免大图操作阻塞 UI 主线程"""
 
-    done = pyqtSignal(object)
-    failed = pyqtSignal(str)
+    done = Signal(object)
+    failed = Signal(str)
 
     def __init__(self, zip_path: str, crop_region: tuple, parent=None):
         super().__init__(parent)

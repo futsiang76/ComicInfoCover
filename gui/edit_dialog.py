@@ -6,8 +6,8 @@
 
 from typing import Dict, Optional
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout,
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout,
                              QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton,
                              QTableWidget, QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget)
 

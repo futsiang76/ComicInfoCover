@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""封面裁剪对话框（P3，PyQt6）— 移植 007 ui/crop_selector.py 的交互语义
+"""封面裁剪对话框（P3，PySide6）— 移植 007 ui/crop_selector.py 的交互语义
 
 - 显示原图 + 锁定竖版 870x1230 比例的裁剪框（拖拽移动 + 右下角手柄等比缩放，不能拉成横版）
 - 初始裁剪框：记忆系统启用且有该比例经验时用推荐位置，否则居中
@@ -16,9 +16,9 @@
 import os
 
 import config
-from PyQt6.QtCore import QPointF, QRectF, Qt
-from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap
-from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton,
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton,
                              QVBoxLayout, QWidget)
 
 from processors.cover_utils import (STANDARD_HEIGHT, STANDARD_WIDTH,
@@ -235,7 +235,7 @@ class _CropCanvas(QWidget):
 
 
 class CropDialog(QDialog):
-    """封面裁剪对话框（PyQt6，锁定 870x1230 比例）"""
+    """封面裁剪对话框（PySide6，锁定 870x1230 比例）"""
 
     def __init__(self, zip_path: str, parent=None):
         super().__init__(parent)

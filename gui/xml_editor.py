@@ -7,9 +7,9 @@ XML编辑器 - 打开/编辑/对比 XML 文件
 import copy
 import os
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
                              QHBoxLayout, QInputDialog, QLabel, QLineEdit,
                              QMessageBox, QPushButton, QTextEdit, QVBoxLayout,
                              QWidget)

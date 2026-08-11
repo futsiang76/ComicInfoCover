@@ -4,7 +4,7 @@ import zipfile
 import zlib
 from pathlib import Path
 
-from PyQt6.QtWidgets import QLabel, QPushButton
+from PySide6.QtWidgets import QLabel, QPushButton
 
 from processors.cover_utils import (get_zip_cover_info, is_cover_ratio_ok,
                                     read_cover_bytes, sort_volume_files)

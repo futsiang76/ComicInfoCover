@@ -6,9 +6,9 @@
 
 from pathlib import Path
 
-from PyQt6.QtCore import QSettings, QSize
-from PyQt6.QtGui import QFont, QMovie
-from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QGroupBox,
+from PySide6.QtCore import QSettings, QSize
+from PySide6.QtGui import QFont, QMovie
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QGroupBox,
                              QHBoxLayout, QLabel, QLineEdit, QProgressBar,
                              QPushButton, QRadioButton, QTextEdit, QVBoxLayout,
                              QWidget)

@@ -1,7 +1,7 @@
 ﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-GUI 模块 - PyQt6 图形界面
+GUI 模块 - PySide6 图形界面
 ──────────────────
 模块文件结构：
   main_window.py        主窗口（244行）骨架，所有方法委托到下级模块

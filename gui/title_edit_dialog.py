@@ -6,8 +6,8 @@ Title编辑对话框 - 编辑系列中各本书的Title和详细信息
 
 from typing import Dict, Union
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QHeaderView,
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QCheckBox, QDialog, QHBoxLayout, QHeaderView,
                              QLabel, QLineEdit, QPushButton, QTableWidget,
                              QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget)
 

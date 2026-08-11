@@ -58,3 +58,7 @@ final_*.txt
 author_results.txt
 .continueignore.venv/
 .hermes/
+
+# 收款码（个人隐私，不入库；发布打包时手动带上）
+assets/sponsor_qr_*.jpg
+assets/sponsor_qr_*.png

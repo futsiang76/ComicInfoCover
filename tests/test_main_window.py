@@ -1,5 +1,5 @@
 """主窗口初始化、tab 切换测试"""
-from PyQt6.QtWidgets import QTabWidget, QPushButton
+from PySide6.QtWidgets import QTabWidget, QPushButton
 
 
 def test_window_title(app):

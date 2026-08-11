@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-主窗口模块 - PyQt6 GUI主窗口
+主窗口模块 - PySide6 GUI主窗口
 """
 
 import os
 from typing import Dict, List, Optional
 
-from PyQt6.QtCore import QPoint, Qt, QSettings, QThread, pyqtSignal
-from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog,
+from PySide6.QtCore import QPoint, Qt, QSettings, QThread, Signal
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QComboBox, QDialog,
                              QDialogButtonBox, QFileDialog,
                              QHeaderView, QInputDialog, QLabel, QLineEdit,
                              QMainWindow, QMenu, QMessageBox, QProgressBar,
@@ -98,6 +98,8 @@ class MainWindow(QMainWindow):
         gear_menu.addAction("使用说明", lambda: self._show_doc_dialog("使用说明", "使用说明.md"))
         gear_menu.addAction("版本", self._show_about_dialog)
         gear_menu.addAction("检查更新", self._check_update_placeholder)
+        if config.SPONSOR_ENABLED:
+            gear_menu.addAction("赞助支持", self._show_sponsor_dialog)
         self._gear_menu = gear_menu
         self._gear_btn = gear_btn
         gear_btn.clicked.connect(lambda: self._popup_gear_menu(gear_btn, gear_menu))
@@ -115,6 +117,11 @@ class MainWindow(QMainWindow):
         """打开应用设置对话框"""
         from gui.settings_dialog import SettingsDialog
         SettingsDialog(self).exec()
+
+    def _show_sponsor_dialog(self):
+        """打开赞助支持对话框"""
+        from gui.sponsor_dialog import SponsorDialog
+        SponsorDialog(self).exec()
 
     def _gear_menu_popup_pos(self, btn, menu) -> QPoint:
         """计算菜单弹出全局坐标：默认对齐按钮右缘向下弹出，超出窗口右缘则整体左移

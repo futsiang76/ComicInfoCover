@@ -4,16 +4,16 @@
 结果标签页 - 扫描结果展示与批量操作面板
 """
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QScrollArea, QVBoxLayout, QWidget
 
 
 def build_results_tab(mw, tab_widget):
     """创建结果标签页"""
     from pathlib import Path
 
-    from PyQt6.QtCore import QSize
-    from PyQt6.QtGui import QMovie
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QMovie
 
     from gui.utils import SmoothMovieLabel
 

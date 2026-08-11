@@ -4,9 +4,9 @@
 共享工具函数
 """
 
-from PyQt6.QtCore import QPoint, QSize, Qt
-from PyQt6.QtGui import QMovie
-from PyQt6.QtWidgets import QApplication, QLabel
+from PySide6.QtCore import QPoint, QSize, Qt
+from PySide6.QtGui import QMovie
+from PySide6.QtWidgets import QApplication, QLabel
 
 
 class SmoothMovieLabel(QLabel):

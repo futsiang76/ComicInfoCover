@@ -9,9 +9,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QFont, QIcon
-from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QGroupBox,
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QFont, QIcon
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QGroupBox,
                              QHBoxLayout, QHeaderView, QLabel, QMainWindow,
                              QMessageBox, QProgressBar, QPushButton, QSpinBox,
                              QSplitter, QStatusBar, QTableWidget,
@@ -26,9 +26,9 @@ from processors.batch_processor import BatchProcessor
 
 class ScanThread(QThread):
     """扫描线程"""
-    progress_updated = pyqtSignal(int, str)
-    scan_completed = pyqtSignal(list)
-    error_occurred = pyqtSignal(str)
+    progress_updated = Signal(int, str)
+    scan_completed = Signal(list)
+    error_occurred = Signal(str)
     
     def __init__(self, root_path: str, mode: int, auto_turbo: bool):
         super().__init__()

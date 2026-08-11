@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """首次启动轻引导对话框 - 极简配置引导（10秒完成，不挡路）"""
 
-from PyQt6.QtCore import QSettings, Qt
-from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QVBoxLayout, QWidget)
 
 import config

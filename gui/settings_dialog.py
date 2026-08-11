@@ -3,9 +3,9 @@
 """应用设置对话框"""
 
 import config
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QFontMetrics, QPainter
-from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFontMetrics, QPainter
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
                              QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
                              QLabel, QLineEdit, QPushButton, QSpinBox, QVBoxLayout,
                              QWidget)

@@ -6,8 +6,8 @@
 
 import copy
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QDialog, QFormLayout, QHBoxLayout, QInputDialog,
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QDialog, QFormLayout, QHBoxLayout, QInputDialog,
                              QLabel, QLineEdit, QMessageBox, QPushButton,
                              QTextEdit, QVBoxLayout, QWidget)
 

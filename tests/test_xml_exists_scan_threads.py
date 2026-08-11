@@ -6,7 +6,7 @@
 """
 import zipfile
 
-from PyQt6.QtWidgets import QLabel
+from PySide6.QtWidgets import QLabel
 
 from gui.base_scan_thread import RESULT_READY
 from gui.comicvine_scan import ComicVineScanThread

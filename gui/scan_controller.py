@@ -8,7 +8,7 @@ import os
 from functools import partial
 from typing import Dict, List, Optional, Tuple
 
-from PyQt6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QMessageBox
 
 from config import (SOURCE_BANGUMI_TEXT, SOURCE_COMICVINE_TEXT,
                     SOURCE_MANHUAGUI_TEXT)
@@ -489,7 +489,7 @@ def _on_full_match_completed(mw, results: List[Dict], mode: int = 0) -> None:
 
 def on_scan_completed(mw, results: List[Dict]):
     """扫描完成"""
-    from PyQt6.QtWidgets import QDialog
+    from PySide6.QtWidgets import QDialog
 
     stop_loading_cat(mw)
     _unlock_controls(mw)

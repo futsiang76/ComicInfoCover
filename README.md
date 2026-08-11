@@ -104,3 +104,28 @@ ComicInfoScratcher/
 - 需要有效的Bangumi API访问令牌来获取NSFW内容
 - 建议先在少量漫画上测试，确认效果后再批量处理
 - 处理大量文件时建议使用无人值守模式提高效率
+
+## 赞助支持
+
+ComicInfo 是完全免费的开源工具。开发不易，如果你觉得它帮你省了时间，
+欢迎扫码支持开发者买猫条 🐱（应用内「齿轮菜单 → 赞助支持」亦可查看）。
+
+> 赞助为**自愿捐赠**，非购买软件或任何服务；捐赠不附带任何功能解锁、优先支持或售后义务。
+
+## License
+
+本项目采用 **GNU General Public License v3.0 (GPL-3.0)**，详见 [LICENSE](LICENSE)。
+
+GPL-3.0 要求：任何人分发/修改本项目代码，必须同样以 GPL-3.0 开源，
+并保留版权声明。本项目的打赏/捐赠通道不影响上述许可条款。
+
+### 第三方依赖致谢
+
+| 依赖 | 用途 | License |
+|------|------|---------|
+| PyQt6 | 图形界面框架 | GPL-3.0（Riverbank Computing） |
+| requests | HTTP 请求 | Apache-2.0 |
+| thefuzz | 模糊匹配 | MIT |
+| zhconv | 繁简转换 | MIT |
+| Pillow | 图像处理 | HPND（宽松） |
+| markdown | Markdown 渲染 | BSD-3-Clause |

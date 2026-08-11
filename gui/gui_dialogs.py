@@ -11,8 +11,8 @@ import os
 import threading
 from typing import Dict, List, Optional
 
-from PyQt6.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
-from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QInputDialog, QLabel,
+from PySide6.QtCore import QObject, Qt, Signal, Slot
+from PySide6.QtWidgets import (QDialog, QHBoxLayout, QInputDialog, QLabel,
                              QListWidget, QListWidgetItem, QMessageBox,
                              QPushButton, QVBoxLayout, QWidget)
 
@@ -219,7 +219,7 @@ def show_result_selection_dialog(parent: QWidget, search_results: List[Dict],
         dialog.accept()
 
     def on_id_search():
-        from PyQt6.QtWidgets import QInputDialog
+        from PySide6.QtWidgets import QInputDialog
         sid, ok = QInputDialog.getText(dialog, "Bangumi ID",
                                        f"请输入 Bangumi ID（如 378725）：\n（当前系列: {folder_info.get('series', '')}）")
         if ok and sid.strip():
@@ -235,7 +235,7 @@ def show_result_selection_dialog(parent: QWidget, search_results: List[Dict],
                 }
                 dialog.accept()
             else:
-                from PyQt6.QtWidgets import QMessageBox
+                from PySide6.QtWidgets import QMessageBox
                 QMessageBox.warning(dialog, "错误", f"未找到 Bangumi ID {sid.strip()} 的作品")
 
     select_btn.clicked.connect(on_select)
@@ -300,7 +300,7 @@ class DialogBridge(QObject):
         - 'bangumi_id_not_found': 查询失败报错弹窗（未找到该 ID 的作品）
         - 'warning': 通用警告弹窗（手动匹配无效 ID 输入等）
     """
-    _request = pyqtSignal(dict)
+    _request = Signal(dict)
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -334,7 +334,7 @@ class DialogBridge(QObject):
         self._waiting = False
         self._event.set()
 
-    @pyqtSlot(dict)
+    @Slot(dict)
     def _handle_request(self, request: dict):
         """在主线程上执行，显示对应的对话框
 

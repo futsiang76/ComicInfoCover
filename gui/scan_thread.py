@@ -7,16 +7,16 @@
 import os
 from typing import Dict, List, Optional
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 
 from gui.gui_dialogs import DialogBridge
 
 
 class ScanThread(QThread):
     """后台扫描线程"""
-    progress_updated = pyqtSignal(int, str)  # (进度, 消息)
-    scan_completed = pyqtSignal(list)  # 扫描结果列表
-    error_occurred = pyqtSignal(str)  # 错误消息
+    progress_updated = Signal(int, str)  # (进度, 消息)
+    scan_completed = Signal(list)  # 扫描结果列表
+    error_occurred = Signal(str)  # 错误消息
 
     def __init__(self, manga_root: str, mode: int, auto_turbo: int, manga_value: Optional[str] = None, bangumi_id: Optional[int] = None, parent=None):
         super().__init__()

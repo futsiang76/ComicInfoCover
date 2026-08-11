@@ -70,6 +70,18 @@
 
 Search before Read. Read before Edit. Edit minimally. Preserve existing architecture. Minimize token consumption.
 
+## 技术选型 License 原则（项目强制约束）
+
+**本项目采用 GPL-3.0**（因依赖 PyQt6，见 README License 段）。
+
+**引入任何新依赖前必须经过 John 确认**，重点是 License 对未来收费/商业化决策的影响：
+
+- MIT / Apache-2.0 / BSD / LGPL → 宽松，未来可闭源收费，一般可直接用
+- GPL / AGPL → 传染性，会强制整个项目保持开源 → **默认不引入，确需引入必须先说明影响，John 拍板**
+- 不确定 License 的依赖 → 先查清楚再报，不擅自引入
+
+执行者（coder / OpenHands / programmer / 小开）在本项目引入新依赖前，先自查 License 并写入变更简报；违反本原则的引入视为任务未完成。
+
 ## Project Quick Reference
 
 - 管理文档 → `H:\obsidian-vault\ComicInfoScratcher\`（006 沿用的决策/优化文档仍可参考）

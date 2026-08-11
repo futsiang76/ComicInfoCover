@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from PyQt6.QtCore import QSettings
+from PySide6.QtCore import QSettings
 
 
 @pytest.fixture(scope="session")

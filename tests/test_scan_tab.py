@@ -1,6 +1,6 @@
 """扫描面板 UI + 交互测试"""
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QButtonGroup, QLabel, QLineEdit, QPushButton, QTextEdit
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QButtonGroup, QLabel, QLineEdit, QPushButton, QTextEdit
 
 from config import (SOURCE_BANGUMI_MIRROR_TEXT, SOURCE_BANGUMI_TEXT,
                     SOURCE_COMICVINE_TEXT, SOURCE_MANHUAGUI_TEXT)
@@ -40,7 +40,7 @@ def test_default_path_has_no_hardcoded_manga(app):
 
 def test_loading_cat_created(app):
     """工作小猫加载动画：SmoothMovieLabel 平滑缩放、尺寸自适应 GIF 原始帧、挂主窗口最上层（不被进度条截断）、初始隐藏、GIF 有效"""
-    from PyQt6.QtGui import QMovie
+    from PySide6.QtGui import QMovie
 
     from gui.utils import SmoothMovieLabel
 
@@ -58,7 +58,7 @@ def test_loading_cat_created(app):
 
 def test_loading_cat_start_stop(app):
     """工作小猫动画启动/停止：可见性 + 播放状态切换（幂等）"""
-    from PyQt6.QtGui import QMovie
+    from PySide6.QtGui import QMovie
 
     from gui.utils import start_loading_cat, stop_loading_cat
 
@@ -73,8 +73,8 @@ def test_loading_cat_start_stop(app):
 
 def test_loading_cat_frame_smooth_scaled(app, monkeypatch):
     """帧渲染走平滑缩放：_on_frame 以 SmoothTransformation 缩放到 label 物理尺寸，结果 setPixmap 非空"""
-    from PyQt6.QtCore import QSize
-    from PyQt6.QtGui import QPixmap
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QPixmap
 
     calls = []
     orig_scaled = QPixmap.scaled
@@ -100,7 +100,7 @@ def test_loading_cat_frame_smooth_scaled(app, monkeypatch):
 
 def test_loading_cat_positioned_on_main_window(app):
     """小猫启动后左下角对齐进度条左下角：左边缘、底边缘均与进度条平齐"""
-    from PyQt6.QtCore import QPoint
+    from PySide6.QtCore import QPoint
 
     from gui.utils import start_loading_cat, stop_loading_cat
 

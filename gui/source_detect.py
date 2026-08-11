@@ -9,7 +9,7 @@
 
 from typing import Optional
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 
 from config import SOURCE_BANGUMI_MIRROR_TEXT
 from utils.geo_detect import detect_country_cn
@@ -21,7 +21,7 @@ AUTO_GEO_DETECT = True
 class _GeoDetectWorker(QThread):
     """后台 IP 检测线程：完成发 detected(result) 信号（True/False/None）"""
 
-    detected = pyqtSignal(object)
+    detected = Signal(object)
 
     def run(self) -> None:
         result = detect_country_cn()

@@ -1,8 +1,8 @@
 """配置/齿轮对话框测试"""
 import config
 
-from PyQt6.QtCore import QPoint
-from PyQt6.QtWidgets import QDialog
+from PySide6.QtCore import QPoint
+from PySide6.QtWidgets import QDialog
 
 from gui.settings_dialog import SettingsDialog, SwitchButton
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-GUI入口文件 - 启动PyQt6图形界面
+GUI入口文件 - 启动PySide6图形界面
 """
 
 import sys
 
-from PyQt6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication
 
 import config
 from gui.main_window import MainWindow

@@ -9,7 +9,7 @@
 
 from functools import partial
 
-from PyQt6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QMessageBox
 
 from .save_thread import SaveThread
 from .utils import set_results_saving, start_loading_cat, stop_loading_cat

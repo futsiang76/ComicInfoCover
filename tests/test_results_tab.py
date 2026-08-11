@@ -1,5 +1,5 @@
 """结果页测试"""
-from PyQt6.QtWidgets import QPushButton, QWidget
+from PySide6.QtWidgets import QPushButton, QWidget
 
 
 def test_results_tab_exists(app):
@@ -48,7 +48,7 @@ def _find_layout_containing(widget, layout):
 
 def test_results_card_crop_label_and_centered_edit(app):
     """结果卡片：展开按钮上方有「裁剪封面」标签；编辑按钮被两侧 addStretch 水平居中"""
-    from PyQt6.QtWidgets import QLabel
+    from PySide6.QtWidgets import QLabel
 
     app.scan_results = [_result_dict("Series")]
     app.update_results_table()
@@ -68,7 +68,7 @@ def test_results_card_crop_label_and_centered_edit(app):
 
 def test_volume_grid_no_center_alignment(app):
     """展开的卷封面网格不整体居中，保持默认对齐弹性铺满"""
-    from PyQt6.QtCore import Qt
+    from PySide6.QtCore import Qt
 
     from gui.results_table import _VolumeGrid
 
@@ -79,7 +79,7 @@ def test_volume_grid_no_center_alignment(app):
 
 def test_crop_label_tight_above_expand_btn(app):
     """「裁剪封面」与展开按钮同布局且间距 0，紧贴按钮上方"""
-    from PyQt6.QtWidgets import QLabel
+    from PySide6.QtWidgets import QLabel
 
     app.scan_results = [_result_dict("Series")]
     app.update_results_table()

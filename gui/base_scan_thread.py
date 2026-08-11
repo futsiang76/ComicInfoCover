@@ -12,7 +12,7 @@
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 
 from .gui_dialogs import DialogBridge
 
@@ -90,13 +90,13 @@ class BaseScanThread(QThread):
     收尾发 scan_completed / series_finished，异常发 error_occurred。
     """
 
-    progress_updated = pyqtSignal(int, str)   # (进度值, 状态消息)
-    progress_range = pyqtSignal(int, int)     # (min, max)，对应 setRange 语义
-    log_message = pyqtSignal(str)
-    scan_completed = pyqtSignal(list)          # 收集到的结果列表
-    series_saved = pyqtSignal(dict)            # 单系列确认结果（逐系列即时保存）
-    error_occurred = pyqtSignal(str)
-    series_finished = pyqtSignal(int, int)     # (processed, skipped) 收尾用
+    progress_updated = Signal(int, str)   # (进度值, 状态消息)
+    progress_range = Signal(int, int)     # (min, max)，对应 setRange 语义
+    log_message = Signal(str)
+    scan_completed = Signal(list)          # 收集到的结果列表
+    series_saved = Signal(dict)            # 单系列确认结果（逐系列即时保存）
+    error_occurred = Signal(str)
+    series_finished = Signal(int, int)     # (processed, skipped) 收尾用
 
     source_name = "base"                       # 数据源/模式标识
     source_label = "扫描"                       # 开始日志用的显示名（可覆盖）

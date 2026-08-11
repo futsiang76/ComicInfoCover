@@ -15,9 +15,9 @@ P3 裁剪交互：
 
 import os
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import (QFormLayout, QGridLayout, QGroupBox, QHBoxLayout,
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import (QFormLayout, QGridLayout, QGroupBox, QHBoxLayout,
                              QLabel, QPushButton, QSizePolicy, QVBoxLayout,
                              QWidget)
 
@@ -94,7 +94,7 @@ EXPAND_BTN_STYLE = """
 class ClickableLabel(QLabel):
     """鼠标左键可点击的 QLabel（「需裁剪」封面缩略图用，P3 触发裁剪对话框）"""
 
-    clicked = pyqtSignal()
+    clicked = Signal()
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

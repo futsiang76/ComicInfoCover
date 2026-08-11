@@ -10,7 +10,7 @@
 
 import os
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 
 
 class SaveThread(QThread):
@@ -21,8 +21,8 @@ class SaveThread(QThread):
     save_handler 挂 mw._save_threads 防 GC）。
     """
 
-    progress_updated = pyqtSignal(int, int, str)  # (已处理文件数, 总数, 状态消息)
-    save_finished = pyqtSignal(int, int, list)    # (total_files, success_files, error_messages)
+    progress_updated = Signal(int, int, str)  # (已处理文件数, 总数, 状态消息)
+    save_finished = Signal(int, int, list)    # (total_files, success_files, error_messages)
 
     def __init__(self, modified_results, parent=None):
         super().__init__(parent)

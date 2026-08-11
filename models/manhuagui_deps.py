@@ -16,8 +16,8 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from PyQt6.QtCore import QThread, Qt, pyqtSignal
-from PyQt6.QtWidgets import QMessageBox, QProgressDialog
+from PySide6.QtCore import QThread, Qt, Signal
+from PySide6.QtWidgets import QMessageBox, QProgressDialog
 
 # 安装子进程超时（秒），chromium 首次下载较慢
 _INSTALL_TIMEOUT = 1800
@@ -105,8 +105,8 @@ def _install_sync() -> bool:
 class _DepsInstallThread(QThread):
     """后台安装线程：pip install playwright → playwright install chromium"""
 
-    progress_updated = pyqtSignal(str)   # 进度提示（更新进度弹窗文案）
-    install_finished = pyqtSignal(bool, str)  # (是否成功, 消息)
+    progress_updated = Signal(str)   # 进度提示（更新进度弹窗文案）
+    install_finished = Signal(bool, str)  # (是否成功, 消息)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)

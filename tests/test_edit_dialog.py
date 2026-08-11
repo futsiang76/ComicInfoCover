@@ -1,5 +1,5 @@
 """编辑对话框测试"""
-from PyQt6.QtWidgets import QLineEdit, QPushButton, QComboBox, QTextEdit
+from PySide6.QtWidgets import QLineEdit, QPushButton, QComboBox, QTextEdit
 
 from gui.edit_dialog import EditDialog
 

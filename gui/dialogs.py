@@ -4,8 +4,8 @@
 独立对话框 - 可复用的模态对话框
 """
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton,
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPushButton,
                              QVBoxLayout)
 
 

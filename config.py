@@ -29,6 +29,12 @@ DEFAULT_SETTINGS = {
     "default_manga_dir": "",       # 默认漫画目录（留空则启动时提示选择）
     "remember_last_path": True,    # 记住上次路径开关（开启则启动优先用上次目录）
     "first_run_done": False,       # 首次启动轻引导是否已完成（完成后不再弹出）
+    # 赞助通道（发布者配置；留空=不显示赞助入口）
+    "sponsor_enabled": False,      # 是否启用赞助入口（齿轮菜单显示「赞助支持」）
+    "sponsor_qr_path": "",         # 收款码图片路径（单码，兼容旧配置；如 assets/sponsor_qr.png）
+    "sponsor_qr_codes": [],        # 收款码列表（多码并排）：[{"name": "支付宝", "path": "assets/xx.jpg"}, ...]
+    "sponsor_text": "",            # 赞助文案（留空用默认文案）
+    "sponsor_url": "",             # 可选外部赞助链接（爱发电/Ko-fi/GitHub Sponsor 等）
     # Bangumi API 镜像列表（官方优先；官方被墙时自动降级到社区镜像）
     "bangumi_mirrors": [
         "https://api.bgm.tv",          # 官方（海外/可直连用户）
@@ -92,6 +98,11 @@ SETTINGS_ATTR_MAP = {
     "default_manga_dir": "DEFAULT_MANGA_DIR",
     "remember_last_path": "REMEMBER_LAST_PATH",
     "first_run_done": "FIRST_RUN_DONE",
+    "sponsor_enabled": "SPONSOR_ENABLED",
+    "sponsor_qr_path": "SPONSOR_QR_PATH",
+    "sponsor_qr_codes": "SPONSOR_QR_CODES",
+    "sponsor_text": "SPONSOR_TEXT",
+    "sponsor_url": "SPONSOR_URL",
     "bangumi_mirrors": "BANGUMI_MIRRORS",
 }
 
@@ -153,6 +164,18 @@ REMEMBER_LAST_PATH = _user_config.get("remember_last_path",
                                       DEFAULT_SETTINGS["remember_last_path"])
 FIRST_RUN_DONE = _user_config.get("first_run_done",
                                   DEFAULT_SETTINGS["first_run_done"])
+
+# 赞助通道（发布者配置：收款码/文案/外链；sponsor_enabled=True 时齿轮菜单显示入口）
+SPONSOR_ENABLED = _user_config.get("sponsor_enabled",
+                                   DEFAULT_SETTINGS["sponsor_enabled"])
+SPONSOR_QR_PATH = _user_config.get("sponsor_qr_path",
+                                   DEFAULT_SETTINGS["sponsor_qr_path"])
+SPONSOR_QR_CODES = _user_config.get("sponsor_qr_codes",
+                                    DEFAULT_SETTINGS["sponsor_qr_codes"])
+SPONSOR_TEXT = _user_config.get("sponsor_text",
+                                DEFAULT_SETTINGS["sponsor_text"])
+SPONSOR_URL = _user_config.get("sponsor_url",
+                               DEFAULT_SETTINGS["sponsor_url"])
 
 # Bangumi API 镜像列表：user_config.json 可覆盖；非法值（非列表/空）回退默认
 _mirrors_cfg = _user_config.get("bangumi_mirrors",

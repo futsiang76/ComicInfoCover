@@ -5,8 +5,8 @@ import zipfile
 import zlib
 from pathlib import Path
 
-from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QApplication, QDialog, QLabel, QPushButton, QSizePolicy
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton, QSizePolicy
 
 import gui.crop_queue as cq
 import gui.results_table as rt
@@ -228,7 +228,7 @@ def test_crop_dialog_no_image_shows_error(qtbot, tmp_path):
 
 def test_crop_dialog_has_maximize_button(qtbot, tmp_path):
     """裁剪窗体带右上角最大化按钮（WindowMaximizeButtonHint）"""
-    from PyQt6.QtCore import Qt
+    from PySide6.QtCore import Qt
 
     cbz = _horizontal_cbz(tmp_path)
     dialog = CropDialog(str(cbz))
@@ -241,7 +241,7 @@ def test_crop_dialog_has_maximize_button(qtbot, tmp_path):
 
 def test_crop_canvas_image_fills_edges(qtbot):
     """图片贴边等比缩放：小图放大填满画布边缘（不再限制 1.0，不留多余留白）"""
-    from PyQt6.QtGui import QImage, QPixmap
+    from PySide6.QtGui import QImage, QPixmap
 
     from gui.crop_dialog import _CropCanvas
 
@@ -400,7 +400,7 @@ def test_title_edit_dialog_shows_cover_thumbnails(tmp_path):
     dialog.close()
 
 
-def test_title_edit_dialog_cover_cell_clickable(tmp_path):
+def test_title_edit_dialog_cover_cell_clickable(qtbot, tmp_path, monkeypatch):
     """逐卷编辑封面缩略图点击绑定：合格封面同样可点击弹裁剪界面"""
     good_cbz = _make_cbz(tmp_path, "Vol 01.cbz", {"000.png": _make_png(*PORTRAIT)})
     data = {
@@ -412,7 +412,15 @@ def test_title_edit_dialog_cover_cell_clickable(tmp_path):
     dialog = TitleEditDialog(data)
     clickable = dialog.title_table.cellWidget(0, 7).findChild(ClickableLabel)
     assert clickable is not None
-    assert not clickable.receivers(clickable.clicked) == 0  # 已绑定点击处理（弹裁剪）
+    # 行为验证（PySide6 的 receivers() 不统计 Python 槽）：
+    # 模拟点击 → 应触发 _open_single_crop_flow（弹裁剪界面）
+    import gui.title_edit_dialog as ted
+    calls = []
+    monkeypatch.setattr(ted, "_open_single_crop_flow",
+                        lambda *a, **k: calls.append(a))
+    clickable.clicked.emit()
+    assert calls, "点击合格封面应触发裁剪流程"
+    assert calls[0][2] == "Vol 01.cbz"  # (self, covers, filename, ...)
     dialog.close()
 
 
