@@ -23,11 +23,17 @@ def test_gear_button_exists(app):
     assert gear.toolTip() == "菜单"
 
 
-def test_gear_menu_has_five_actions(app):
+def test_gear_menu_base_actions(app):
     menu = app._gear_menu
     assert menu is not None
     labels = [action.text() for action in menu.actions()]
-    assert labels == ["应用设置", "法律声明", "使用说明", "版本", "检查更新"]
+    # 基础 5 项始终存在
+    for base in ("应用设置", "法律声明", "使用说明", "版本", "检查更新"):
+        assert base in labels
+    # 赞助项按配置可选（sponsor_enabled=True 时出现）
+    import config
+    if config.SPONSOR_ENABLED:
+        assert "赞助支持" in labels
 
 
 def test_gear_menu_popup_pos_within_window(app, qtbot):

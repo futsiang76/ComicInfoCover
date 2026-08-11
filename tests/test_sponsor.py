@@ -124,3 +124,18 @@ def test_sponsor_default_text_mentions_cat():
     """默认文案含买猫条话术"""
     from gui.sponsor_dialog import DEFAULT_SPONSOR_TEXT
     assert "买猫条" in DEFAULT_SPONSOR_TEXT
+
+
+def test_sponsor_thank_mode_text_mentions_leo():
+    """感谢模式文案提到 ComicInfoCover 和小猫 Leo"""
+    from gui.sponsor_dialog import DEFAULT_THANK_TEXT
+    assert "ComicInfoCover" in DEFAULT_THANK_TEXT
+    assert "Leo" in DEFAULT_THANK_TEXT
+
+
+def test_sponsor_thank_mode_builds(qapp):
+    """感谢模式对话框可构建（标题=感谢使用）"""
+    from gui.sponsor_dialog import SponsorDialog
+    dlg = SponsorDialog(thank_mode=True)
+    assert dlg.windowTitle() == "感谢使用"
+    dlg.close()

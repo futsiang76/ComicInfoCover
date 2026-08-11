@@ -35,6 +35,8 @@ DEFAULT_SETTINGS = {
     "sponsor_qr_codes": [],        # 收款码列表（多码并排）：[{"name": "支付宝", "path": "assets/xx.jpg"}, ...]
     "sponsor_text": "",            # 赞助文案（留空用默认文案）
     "sponsor_url": "",             # 可选外部赞助链接（爱发电/Ko-fi/GitHub Sponsor 等）
+    "sponsor_close_confirm": True, # 关闭时确认框带赞助提示（可关）
+    "sponsor_close_count": 0,      # 关闭计数（每 N 次弹感谢窗，勿手改）
     # Bangumi API 镜像列表（官方优先；官方被墙时自动降级到社区镜像）
     "bangumi_mirrors": [
         "https://api.bgm.tv",          # 官方（海外/可直连用户）
@@ -103,6 +105,8 @@ SETTINGS_ATTR_MAP = {
     "sponsor_qr_codes": "SPONSOR_QR_CODES",
     "sponsor_text": "SPONSOR_TEXT",
     "sponsor_url": "SPONSOR_URL",
+    "sponsor_close_confirm": "SPONSOR_CLOSE_CONFIRM",
+    "sponsor_close_count": "SPONSOR_CLOSE_COUNT",
     "bangumi_mirrors": "BANGUMI_MIRRORS",
 }
 
@@ -176,6 +180,10 @@ SPONSOR_TEXT = _user_config.get("sponsor_text",
                                 DEFAULT_SETTINGS["sponsor_text"])
 SPONSOR_URL = _user_config.get("sponsor_url",
                                DEFAULT_SETTINGS["sponsor_url"])
+SPONSOR_CLOSE_CONFIRM = _user_config.get("sponsor_close_confirm",
+                                         DEFAULT_SETTINGS["sponsor_close_confirm"])
+SPONSOR_CLOSE_COUNT = _user_config.get("sponsor_close_count",
+                                       DEFAULT_SETTINGS["sponsor_close_count"])
 
 # Bangumi API 镜像列表：user_config.json 可覆盖；非法值（非列表/空）回退默认
 _mirrors_cfg = _user_config.get("bangumi_mirrors",

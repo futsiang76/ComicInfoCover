@@ -6,6 +6,9 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QSettings
 
+# 强制离屏平台：所有 GUI 测试不弹真实窗口（closeEvent 等不阻塞）
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 
 @pytest.fixture(scope="session")
 def qapp_args():

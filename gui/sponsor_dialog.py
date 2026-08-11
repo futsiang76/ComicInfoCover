@@ -18,6 +18,10 @@ DEFAULT_SPONSOR_TEXT = (
     "可以扫码请开发者喝杯咖啡："
 )
 
+DEFAULT_THANK_TEXT = (
+    "喜欢 ComicInfoCover 的话，可以请小猫 Leo 吃猫条 🐱"
+)
+
 QR_MAX_SIZE = 200  # 收款码显示最大边长（多码并排时缩小）
 
 
@@ -26,11 +30,16 @@ class SponsorDialog(QDialog):
 
     展示发布者配置的收款码（sponsor_qr_codes 多码并排，或 sponsor_qr_path 单码）
     与文案（config.SPONSOR_TEXT）。未配置收款码时给出提示，不崩溃。
+
+    Args:
+        parent: 父窗口
+        thank_mode: True 时显示感谢文案（关闭软件时弹的轻提示）
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, thank_mode: bool = False):
         super().__init__(parent)
-        self.setWindowTitle("赞助支持")
+        self.thank_mode = thank_mode
+        self.setWindowTitle("感谢使用" if thank_mode else "赞助支持")
         self.setMinimumWidth(420)
         self._setup_ui()
 
@@ -39,12 +48,30 @@ class SponsorDialog(QDialog):
         layout = QVBoxLayout()
         self.setLayout(layout)
 
-        # 赞助文案（自定义优先，留空用默认）
-        text = config.SPONSOR_TEXT.strip() or DEFAULT_SPONSOR_TEXT
+        # 赞助/感谢文案（自定义优先，留空用默认；感谢模式用猫条文案）
+        if self.thank_mode:
+            text = DEFAULT_THANK_TEXT
+        else:
+            text = config.SPONSOR_TEXT.strip() or DEFAULT_SPONSOR_TEXT
         text_label = QLabel(text)
         text_label.setWordWrap(True)
         text_label.setStyleSheet("font-size: 13px; color: #333333;")
         layout.addWidget(text_label)
+
+        # 感谢模式：显示动画小猫（复用 loading_cat.gif，品牌一致）
+        if self.thank_mode:
+            cat_label = QLabel()
+            cat_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            cat_label.setFixedSize(120, 81)  # 250x169 等比缩到 120 宽
+            cat_path = self._resolve_asset_path("assets/loading_cat.gif")
+            if cat_path and os.path.exists(cat_path):
+                from PySide6.QtGui import QMovie
+                movie = QMovie(cat_path)
+                movie.setScaledSize(cat_label.size())
+                cat_label.setMovie(movie)
+                movie.start()
+                self._cat_movie = movie  # 持有引用防 GC
+            layout.addWidget(cat_label)
 
         # 收款码区：多码并排（每个带名称标签）或单码
         qr_items = self._collect_qr_items()
@@ -134,6 +161,20 @@ class SponsorDialog(QDialog):
             return raw
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         return os.path.join(root, raw)
+
+    def _resolve_asset_path(self, raw: str) -> str:
+        """解析 assets 资源绝对路径（相对项目根；打包后兼容 _MEIPASS）"""
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        path = os.path.join(root, raw)
+        if os.path.exists(path):
+            return path
+        # 打包环境（PyInstaller _MEIPASS）
+        import sys
+        if hasattr(sys, "_MEIPASS"):
+            alt = os.path.join(sys._MEIPASS, raw)
+            if os.path.exists(alt):
+                return alt
+        return path
 
     def _open_sponsor_url(self) -> None:
         """打开外部赞助链接（系统浏览器）"""

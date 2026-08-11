@@ -298,3 +298,54 @@ class MainWindow(QMainWindow):
     def cancel_to_scan(self):
         """取消并返回扫描页"""
         self.tab_widget.setCurrentIndex(0)
+
+    def closeEvent(self, event):
+        """关闭时：确认框带赞助提示 + 每 10 次关闭弹感谢窗
+
+        - sponsor_close_confirm=True：弹确认框（含猫条提示）
+        - 关闭计数到 10 的倍数：额外弹感谢窗（非模态，不阻断关闭）
+        - 离屏/测试平台（QT_QPA_PLATFORM=offscreen）直接放行不弹窗
+        """
+        from PySide6.QtWidgets import QMessageBox
+        import os as _os
+        if _os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            event.accept()
+            return
+
+        sponsor_enabled = getattr(config, "SPONSOR_ENABLED", False)
+
+        # 关闭确认框（赞助开启时带猫条提示）
+        if sponsor_enabled and config.SPONSOR_CLOSE_CONFIRM:
+            ret = QMessageBox.question(
+                self, "退出",
+                "确定要退出 ComicInfoCover 吗？\n\n"
+                "喜欢 ComicInfoCover 的话，可以请小猫 Leo 吃猫条 🐱\n"
+                "（齿轮菜单 → 赞助支持）",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if ret != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+        else:
+            ret = QMessageBox.question(
+                self, "退出", "确定要退出吗？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if ret != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+
+        # 关闭计数（每 10 次弹一次感谢窗）
+        if sponsor_enabled:
+            try:
+                count = int(getattr(config, "SPONSOR_CLOSE_COUNT", 0) or 0)
+                config.save_settings({"sponsor_close_count": count + 1})
+                if (count + 1) % 10 == 0:
+                    from gui.sponsor_dialog import SponsorDialog
+                    SponsorDialog(self, thank_mode=True).exec()
+            except Exception:
+                pass  # 计数失败不影响正常关闭
+
+        event.accept()
