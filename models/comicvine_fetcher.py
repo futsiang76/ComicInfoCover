@@ -66,7 +66,7 @@ class ComicVineFetcher:
 
     def __init__(self) -> None:
         self.session = requests.Session()
-        self.session.headers["User-Agent"] = "ComicInfoScratcher/1.0 (comic metadata fetcher)"
+        self.session.headers["User-Agent"] = "ComicScratch/1.0 (comic metadata fetcher)"
 
     # ------------------------------------------------------------------
     # 搜索

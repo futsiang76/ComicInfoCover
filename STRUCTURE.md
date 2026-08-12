@@ -1,7 +1,7 @@
 ## 项目结构
 
 ```
-ComicInfoScratcher/
+ComicScratch/
 ├── config.py                 # 配置和常量
 ├── secrets.py                # API密钥（本地，不提交）
 ├── AGENTS.md                 # Agent 工作规则

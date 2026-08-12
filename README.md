@@ -59,7 +59,7 @@ AUTO_TURBO_MATCH = 1  # 开启无人值守速通模式
 ## 项目结构
 
 ```
-ComicInfoScratcher/
+ComicScratch/
 ├── gui_app.py                # GUI应用入口
 ├── config.py                 # 配置和常量
 ├── models/

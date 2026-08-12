@@ -87,6 +87,6 @@ class OnboardingDialog(QDialog):
         })
         # 填了目录则覆盖记住的上次路径残留：主窗体无论开关状态都用新目录
         if manga_dir:
-            QSettings("ComicInfoScratcher", "ComicInfoXMLCreator").setValue(
+            QSettings("ComicScratch", "ComicScratch").setValue(
                 "last_manga_path", manga_dir)
         self.accept()

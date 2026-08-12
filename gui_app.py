@@ -34,8 +34,8 @@ def main():
     app = QApplication(sys.argv)
 
     # 设置应用属性
-    app.setApplicationName("ComicInfo XML Creator")
-    app.setOrganizationName("ComicInfoScratcher")
+    app.setApplicationName("ComicScratch")
+    app.setOrganizationName("ComicScratch")
 
     # Qt 6 默认启用高 DPI 支持，无需额外设置
 

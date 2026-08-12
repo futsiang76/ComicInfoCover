@@ -3,7 +3,7 @@ from PySide6.QtWidgets import QTabWidget, QPushButton
 
 
 def test_window_title(app):
-    assert app.windowTitle() == "ComicInfo XML Creator"
+    assert app.windowTitle() == "ComicScratch"
 
 
 def test_has_tab_widget(app):

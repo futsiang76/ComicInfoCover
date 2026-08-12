@@ -140,7 +140,7 @@ def _api_key_from_config(key: str, legacy_name: str) -> str:
 
 
 # ===================== 应用信息 =====================
-APP_NAME = "ComicInfoCover"
+APP_NAME = "ComicScratch"
 APP_VERSION = "1.0.0"
 
 # ===================== 核心配置 =====================

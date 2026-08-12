@@ -66,7 +66,7 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         """初始化UI"""
-        self.setWindowTitle("ComicInfo XML Creator")
+        self.setWindowTitle("ComicScratch")
         self.setMinimumSize(1200, 800)
 
         # 中央部件
@@ -106,7 +106,7 @@ class MainWindow(QMainWindow):
         self.tab_widget.setCornerWidget(gear_btn)
         
         # 启动路径：记住上次路径=开 → 上次路径 > 默认目录；关 → 仅默认目录；均无 → 提示选择
-        settings = QSettings("ComicInfoScratcher", "ComicInfoXMLCreator")
+        settings = QSettings("ComicScratch", "ComicScratch")
         initial_path = self._initial_manga_path(settings)
         if initial_path:
             self.path_edit.setText(initial_path)
@@ -197,8 +197,8 @@ class MainWindow(QMainWindow):
             f"<h3>{config.APP_NAME} {config.APP_VERSION}</h3>"
             "<p>本地漫画库 ComicInfo.xml 批量整理工具</p>"
             "<p>© 2026 futsiang76. All rights reserved.</p>"
-            '<p><a href="https://github.com/futsiang76/ComicInfoCover">'
-            "GitHub: futsiang76/ComicInfoCover</a></p>"
+            '<p><a href="https://github.com/futsiang76/ComicScratch">'
+            "GitHub: futsiang76/ComicScratch</a></p>"
         )
         box = QMessageBox(self)
         box.setWindowTitle("版本")
@@ -245,7 +245,7 @@ class MainWindow(QMainWindow):
         if path:
             self.path_edit.setText(path)
             # 保存路径到 QSettings（记住上次路径依赖）
-            settings = QSettings("ComicInfoScratcher", "ComicInfoXMLCreator")
+            settings = QSettings("ComicScratch", "ComicScratch")
             settings.setValue("last_manga_path", path)
             # 首次引导：默认目录为空时同步写入 config，无记忆也能回到该目录
             if not config.DEFAULT_MANGA_DIR:
@@ -318,8 +318,8 @@ class MainWindow(QMainWindow):
         if sponsor_enabled and config.SPONSOR_CLOSE_CONFIRM:
             ret = QMessageBox.question(
                 self, "退出",
-                "确定要退出 ComicInfoCover 吗？\n\n"
-                "喜欢 ComicInfoCover 的话，可以请小猫 Leo 吃猫条 🐱\n"
+                "确定要退出 ComicScratch 吗？\n\n"
+                "喜欢 ComicScratch 的话，可以请小猫 Leo 吃猫条 🐱\n"
                 "（齿轮菜单 → 赞助支持）",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,

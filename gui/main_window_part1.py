@@ -1,7 +1,7 @@
 ﻿﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-主窗口 - ComicInfoXmlCreator GUI
+主窗口 - ComicScratch GUI
 """
 
 import os

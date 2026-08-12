@@ -1,4 +1,4 @@
-"""pytest-qt 共享 fixture — ComicInfoScratcher GUI 自动化测试"""
+"""pytest-qt 共享 fixture — ComicScratch GUI 自动化测试"""
 import os
 import tempfile
 from pathlib import Path
@@ -13,7 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 @pytest.fixture(scope="session")
 def qapp_args():
     """传给 QApplication 的参数"""
-    return ["ComicInfoScratcherTest"]
+    return ["ComicScratchTest"]
 
 
 @pytest.fixture

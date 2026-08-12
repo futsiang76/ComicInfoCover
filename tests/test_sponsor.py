@@ -127,9 +127,9 @@ def test_sponsor_default_text_mentions_cat():
 
 
 def test_sponsor_thank_mode_text_mentions_leo():
-    """感谢模式文案提到 ComicInfoCover 和小猫 Leo"""
+    """感谢模式文案提到 ComicScratch 和小猫 Leo"""
     from gui.sponsor_dialog import DEFAULT_THANK_TEXT
-    assert "ComicInfoCover" in DEFAULT_THANK_TEXT
+    assert "ComicScratch" in DEFAULT_THANK_TEXT
     assert "Leo" in DEFAULT_THANK_TEXT
 
 

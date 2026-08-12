@@ -1,4 +1,4 @@
-# ComicInfoCover - Agent Operating Rules
+# ComicScratch - Agent Operating Rules
 
 ## 项目定位（008 合并项目）
 

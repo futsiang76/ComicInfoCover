@@ -19,7 +19,7 @@ DEFAULT_SPONSOR_TEXT = (
 )
 
 DEFAULT_THANK_TEXT = (
-    "喜欢 ComicInfoCover 的话，可以请小猫 Leo 吃猫条 🐱"
+    "喜欢 ComicScratch 的话，可以请小猫 Leo 吃猫条 🐱"
 )
 
 QR_MAX_SIZE = 200  # 收款码显示最大边长（多码并排时缩小）
