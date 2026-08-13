@@ -279,6 +279,7 @@ def create_result_dict_from_xml(folder_path: str, folder_info: Dict,
         "publisher": comic_info_base.get("Publisher", "") if comic_info_base else "",
         "status": comic_status,
         "summary": comic_info_base.get("Summary", "") if comic_info_base else "",
+        "genre": comic_info_base.get("Genre", "") if comic_info_base else "",  # 编辑XML路径：分类字段
         "tags": comic_info_base.get("Tags", "") if comic_info_base else "",  # 编辑XML路径：直接从XML读取，不合并文件夹标签
         "rating": comic_info_base.get("Rating", "") if comic_info_base else "",
         "manga": comic_info_base.get("Manga", "") if comic_info_base else "",  # 使用XML中的Manga值

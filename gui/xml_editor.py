@@ -18,6 +18,37 @@ from .edit_dialog import EditDialog
 from .utils import _trim_compare_dicts
 
 
+def _xml_data_to_edit_fields(xml_data: dict) -> dict:
+    """将 ComicInfo.xml 字段字典转换为编辑对话框字段字典
+
+    xml_data 是 {XML标签: 值}（如 Series/Writer/Genre），
+    返回 EditDialog 使用的 data 字典（series/writer/genre...）。
+    两处编辑流程（文件/压缩包内 XML）共用，字段增改只改这里。
+    """
+    return {
+        "series": xml_data.get("Series", ""),
+        "count": xml_data.get("Count", ""),
+        "writer": xml_data.get("Writer", ""),
+        "penciller": xml_data.get("Penciller", ""),
+        "colorist": xml_data.get("Colorist", ""),
+        "year": xml_data.get("Year", ""),
+        "month": xml_data.get("Month", ""),
+        "status": xml_data.get("Status", ""),
+        "summary": xml_data.get("Summary", ""),
+        "genre": xml_data.get("Genre", ""),
+        "tags": xml_data.get("Tags", ""),
+        "manga": xml_data.get("Manga", ""),
+    }
+
+
+def _has_edit_changes(original: dict, updated: dict) -> bool:
+    """对比原始/更新后字段，判断是否有实际修改（任一字段变化即 True）"""
+    return any(
+        str(original.get(key, "")).strip() != str(updated.get(key, "")).strip()
+        for key in original
+    )
+
+
 def open_xml_editor(mw, xml_path: str):
     """打开XML编辑对话框 - 解析ComicInfo.xml并打开编辑对话框
     
@@ -37,19 +68,7 @@ def open_xml_editor(mw, xml_path: str):
         QMessageBox.warning(mw, "错误", f"读取XML文件失败:\n{str(e)[:200]}")
         return
 
-    data = {
-        "series": xml_data.get("Series", ""),
-        "count": xml_data.get("Count", ""),
-        "writer": xml_data.get("Writer", ""),
-        "penciller": xml_data.get("Penciller", ""),
-        "colorist": xml_data.get("Colorist", ""),
-        "year": xml_data.get("Year", ""),
-        "month": xml_data.get("Month", ""),
-        "status": xml_data.get("Status", ""),
-        "summary": xml_data.get("Summary", ""),
-        "tags": xml_data.get("Tags", ""),
-        "manga": xml_data.get("Manga", ""),
-    }
+    data = _xml_data_to_edit_fields(xml_data)
 
     original_data = copy.deepcopy(data)
     dialog = EditDialog(data, mw)
@@ -57,13 +76,7 @@ def open_xml_editor(mw, xml_path: str):
         updated_data = dialog.get_data()
 
         # 检查是否有实际修改
-        has_changes = False
-        for key in data.keys():
-            if str(original_data.get(key, "")).strip() != str(updated_data.get(key, "")).strip():
-                has_changes = True
-                break
-
-        if not has_changes:
+        if not _has_edit_changes(original_data, updated_data):
             print("ℹ️  无实际修改，跳过保存")
             return
 
@@ -175,7 +188,7 @@ def on_edit_xml_clicked(mw):
     has_changes = any(
         str(original_data.get(k, "")).strip() != str(updated_data.get(k, "")).strip()
         for k in ["series", "count", "writer", "penciller", "colorist",
-                   "year", "month", "status", "summary", "tags", "manga"]
+                  "year", "month", "status", "summary", "genre", "tags", "manga"]
     )
     if not has_changes:
         print("ℹ️   无实际修改，跳过保存")
@@ -228,19 +241,7 @@ def edit_zip_xml(parent: QWidget, zip_path: str) -> bool:
                             f"读取 ComicInfo.xml 失败:\n{os.path.basename(zip_path)}")
         return False
 
-    data = {
-        "series": xml_data.get("Series", ""),
-        "count": xml_data.get("Count", ""),
-        "writer": xml_data.get("Writer", ""),
-        "penciller": xml_data.get("Penciller", ""),
-        "colorist": xml_data.get("Colorist", ""),
-        "year": xml_data.get("Year", ""),
-        "month": xml_data.get("Month", ""),
-        "status": xml_data.get("Status", ""),
-        "summary": xml_data.get("Summary", ""),
-        "tags": xml_data.get("Tags", ""),
-        "manga": xml_data.get("Manga", ""),
-    }
+    data = _xml_data_to_edit_fields(xml_data)
 
     original_data = copy.deepcopy(data)
     filename = os.path.basename(zip_path)
@@ -250,11 +251,7 @@ def edit_zip_xml(parent: QWidget, zip_path: str) -> bool:
 
     updated_data = dialog.get_data()
 
-    has_changes = any(
-        str(original_data.get(k, "")).strip() != str(updated_data.get(k, "")).strip()
-        for k in data
-    )
-    if not has_changes:
+    if not _has_edit_changes(original_data, updated_data):
         return False
 
     comic_info = build_full_comicinfo_dict(result=updated_data)
