@@ -88,42 +88,33 @@ class XMLTemplateHandler:
             "Web": f"https://bgm.tv/subject/{bangumi_data['id']}" if bangumi_data.get("id") else ""
         })
         
-        # 处理作者信息 - 使用BangumiFetcher的方法
+        # 处理作者信息 - 使用BangumiFetcher的方法（infobox + persons 两端点合并）
         from models.bangumi_fetcher import BangumiFetcher, extract_bangumi_genre
+        from models.author_utils import extract_bangumi_authors_merged
         from models.bangumi_genre import extract_bangumi_aliases
         fetcher = BangumiFetcher()
-        
-        # 使用BangumiFetcher的extract_bangumi_authors_by_type方法
-        author_types = fetcher.extract_bangumi_authors_by_type(bangumi_data)
-        
-        # 定义角色分类
-        story_roles = ["原作", "监督", "监制", "脚本", "导演", "原著"]
-        art_roles = ["作者", "作画", "制作", "插画", "绘制"]
-        
-        # 按角色分类收集
-        story_authors = []
-        art_authors = []
-        
-        for role_type, authors in author_types.items():
-            if role_type in story_roles:
-                story_authors.extend(authors)
-            elif role_type in art_roles:
-                art_authors.extend(authors)
-        
-        # 去重
-        story_authors = list(dict.fromkeys(story_authors))
-        art_authors = list(dict.fromkeys(art_authors))
-        
-        # 应用规则
-        if len(story_authors) == 0 and len(art_authors) == 0:
+
+        # persons 端点每次都调（与 infobox 一起），失败静默返回 []
+        subject_id = bangumi_data.get("id")
+        persons = fetcher.get_manga_persons(int(subject_id)) if subject_id else []
+
+        # 两端点合并分类：Writer=原作/脚本/监督/导演/原著，Penciller=作者/作画/插画，
+        # Colorist=上色/色彩；同名跨端点去重（优先 infobox 映射）
+        fields = extract_bangumi_authors_merged(bangumi_data, persons)
+        story_authors = fields["Writer"]
+        art_authors = fields["Penciller"]
+        color_authors = fields["Colorist"]
+
+        # 应用规则（Writer/Penciller 单向补齐：无画师时画师填原作，反之亦然）
+        if not story_authors and not art_authors:
             # 没有任何作者信息，使用文件夹作者，同时填充Writer和Penciller
             template["Writer"] = folder_info["author"]
             template["Penciller"] = folder_info["author"]
-        elif len(story_authors) == 0 and len(art_authors) > 0:
+        elif not story_authors and art_authors:
             # 只有绘画作者，同时填充Writer和Penciller
             template["Writer"] = ", ".join(art_authors)
             template["Penciller"] = ", ".join(art_authors)
-        elif len(story_authors) > 0 and len(art_authors) == 0:
+        elif story_authors and not art_authors:
             # 只有故事作者，同时填充Writer和Penciller
             template["Writer"] = ", ".join(story_authors)
             template["Penciller"] = ", ".join(story_authors)
@@ -131,6 +122,7 @@ class XMLTemplateHandler:
             # 同时有故事作者和绘画作者，分别放入对应字段
             template["Writer"] = ", ".join(story_authors)
             template["Penciller"] = ", ".join(art_authors)
+        template["Colorist"] = ", ".join(color_authors)
         
         # 处理标签（复用 bangumi_fetcher 的 Genre 白名单 + Tags 截断逻辑）
         genre_str = extract_bangumi_genre(bangumi_data)

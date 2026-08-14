@@ -152,19 +152,54 @@ class TestFetchWebAuthors:
 
 
 class TestExtractResultAuthorsFallback:
-    """测试 _extract_result_authors：API 无作者 → 网页兜底"""
+    """测试 _extract_result_authors：infobox + persons 合并 → 网页兜底"""
 
     @staticmethod
-    def _make_handler(detail, web_authors):
+    def _make_handler(detail, web_authors, persons=None):
         fetcher = BangumiFetcher()
         fetcher.get_manga_detail = MagicMock(return_value=detail)
+        fetcher.get_manga_persons = MagicMock(return_value=persons or [])
         fetcher.fetch_web_authors = MagicMock(return_value=web_authors)
         return SearchHandler(fetcher)
+
+    def test_persons_merged_when_infobox_missing_author(self):
+        # 533821 场景：infobox 只有作画（左藤圭右），persons 补原作（宮崎まさる）
+        detail = {"infobox": [{"key": "作画", "value": [{"v": "左藤圭右"}]}]}
+        persons = [{"name": "宮崎まさる", "relation": "原作"},
+                   {"name": "左藤圭右", "relation": "作画"}]
+        handler = self._make_handler(detail, [], persons=persons)
+        authors = handler._extract_result_authors({"id": 533821})
+        assert authors == ["宮崎まさる", "左藤圭右"]
+        handler.fetcher.fetch_web_authors.assert_not_called()
+
+    def test_persons_non_person_relations_filtered(self):
+        # 208356 场景：persons 含出版社/连载杂志/书系等非人物职务，一律过滤
+        detail = {"infobox": []}
+        persons = [
+            {"name": "新星出版社", "relation": "出版社"},
+            {"name": "Arthur Conan Doyle", "relation": "原作"},
+            {"name": "角川コミックス・エース", "relation": "书系"},
+            {"name": "ヤングエース", "relation": "连载杂志"},
+        ]
+        handler = self._make_handler(detail, [], persons=persons)
+        authors = handler._extract_result_authors({"id": 208356})
+        assert authors == ["Arthur Conan Doyle"]
+
+    def test_persons_author_equals_infobox_artist_dedup(self):
+        # 586702 场景：persons「作者」= infobox「作画」同义归一，石田スイ只进一次
+        detail = {"infobox": [{"key": "作画", "value": [{"v": "石田スイ"}]},
+                              {"key": "原作", "value": [{"v": "冨樫義博"}]}]}
+        persons = [{"name": "冨樫義博", "relation": "原作"},
+                   {"name": "石田スイ", "relation": "作者"}]
+        handler = self._make_handler(detail, [], persons=persons)
+        authors = handler._extract_result_authors({"id": 586702})
+        assert authors == ["冨樫義博", "石田スイ"]
 
     def test_api_empty_uses_web_fallback(self):
         handler = self._make_handler({"infobox": []}, ["CLAMP"])
         authors = handler._extract_result_authors({"id": 37953})
         assert authors == ["CLAMP"]
+        handler.fetcher.get_manga_persons.assert_called_once_with(37953)
         handler.fetcher.fetch_web_authors.assert_called_once_with(37953)
 
     def test_api_no_detail_uses_web_fallback(self):
@@ -197,6 +232,7 @@ class TestFilterMatchingResultsIntegration:
             with_author_detail,   # 378339
             with_author_detail,   # 378727
         ])
+        fetcher.get_manga_persons = MagicMock(return_value=[])
         fetcher.fetch_web_authors = MagicMock(return_value=["CLAMP"])
         handler = SearchHandler(fetcher)
         matched = handler.filter_matching_results(results, {"author": "CLAMP"}, 70)

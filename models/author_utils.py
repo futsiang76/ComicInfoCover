@@ -5,7 +5,7 @@
 """
 
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from zhconv import convert
 from thefuzz import fuzz
@@ -24,15 +24,24 @@ def _clean_author_name(author_name: str) -> str:
         return ""
     
     # 先移除全角括号及其内容（包括嵌套）：「」『』【】（）
-    # 使用非贪婪匹配，从外层开始
-    author_name = re.sub(r'（[^）]*）', '', author_name)  # 全角圆括号
-    author_name = re.sub(r'「[^」]*」', '', author_name)  # 全角方括号
-    author_name = re.sub(r'『[^』]*』', '', author_name)  # 全角双引号
-    author_name = re.sub(r'【[^】]*】', '', author_name)  # 全角方头括号
-    
-    # 移除半角括号及其内容：()
-    author_name = re.sub(r'\([^)]*\)', '', author_name)
-    
+    # 循环反复剥离最内层括号段直到无可剥离内容，处理嵌套括号
+    # （如 "(Mark Gatiss (Author), Steven Moffat (Creator))" 需剥两轮）
+    # 注意：[^（）]* 用「不含任何括号字符」而非「不含右括号」，
+    # 否则 "([^)]*)" 会跨过嵌套左括号、从第一个 ( 匹配到第一个 )，剥不干净
+    while True:
+        new_name = author_name
+        new_name = re.sub(r'（[^（）]*）', '', new_name)  # 全角圆括号
+        new_name = re.sub(r'「[^「」]*」', '', new_name)  # 全角方括号
+        new_name = re.sub(r'『[^『』]*』', '', new_name)  # 全角双引号
+        new_name = re.sub(r'【[^【】]*】', '', new_name)  # 全角方头括号
+        new_name = re.sub(r'\([^()]*\)', '', new_name)  # 半角括号
+        if new_name == author_name:
+            break
+        author_name = new_name
+
+    # 兜底：清除任何残留的半角/全角括号字符（如不成对的多余右括号）
+    author_name = re.sub(r'[()（）「」『』【】]', '', author_name)
+
     # 清理多余空格
     author_name = author_name.strip()
     
@@ -51,7 +60,8 @@ def _split_authors( author_string: str) -> List[str]:
     if not author_string or not author_string.strip():
         return []
     
-    # 定义常见的作者分隔符（注意：不包含可能出现在人名中的符号，如"·"、"与"、"和"）
+    # 定义常见的作者分隔符（注意：不包含可能出现在人名中的符号，
+    # 如 "·"（U+00B7）、"・"（U+30FB 日文中点，スティーヴン・モファット 的组成部分）、"与"、"和"）
     separators = [
         '、',      # 中文顿号
         '，',      # 全角逗号
@@ -62,16 +72,21 @@ def _split_authors( author_string: str) -> List[str]:
         '&',       # 与符号
         '/',       # 斜杠
         '\\',      # 反斜杠
-        '・',      # 全角中点（日文）
         '+',       # 加号
     ]
+    
+    # 先整体剥离括号注释（如 "(Mark Gatiss (Author), Steven Moffat (Creator))"），
+    # 否则括号内的逗号/顿号会被当作作者分隔符，产生残留片段
+    author_string = _clean_author_name(author_string)
+    if not author_string:
+        return []
     
     # 使用正则表达式分割
     pattern = '|'.join(re.escape(sep) for sep in separators)
     authors = re.split(pattern, author_string)
     
-    # 清理并过滤空字符串
-    authors = [_clean_author_name(author.strip()) for author in authors if author.strip()]
+    # 清理并过滤空字符串（此时已无括号，仅 strip 即可）
+    authors = [author.strip() for author in authors if author.strip()]
     
     # 过滤清理后的空字符串
     authors = [author for author in authors if author]
@@ -79,38 +94,135 @@ def _split_authors( author_string: str) -> List[str]:
     return authors
 
 
-def extract_bangumi_authors( detail: Dict) -> List[str]:
-    """从Bangumi详情中提取所有作者名"""
+# ----------------------------------------------------------------------
+# Bangumi 人物职务 → ComicInfo 角色字段 统一映射
+# （persons 端点的 relation 与 infobox 的 key 共用同一张表做同义归一；
+#   出版社/连载杂志/书系/出品方等非人物职务不在表中，天然被过滤）
+# ----------------------------------------------------------------------
+PERSON_ROLE_TO_FIELD = {
+    # Writer（故事创作）
+    "原作": "Writer",
+    "脚本": "Writer",
+    "监督": "Writer",
+    "监制": "Writer",
+    "导演": "Writer",
+    "原著": "Writer",
+    # Penciller（绘画创作；persons「作者」= infobox「作画」同义归一）
+    "作者": "Penciller",
+    "作画": "Penciller",
+    "插画": "Penciller",
+    "绘制": "Penciller",
+    # Colorist（上色）
+    "上色": "Colorist",
+    "色彩": "Colorist",
+    # 其它人物职务（保持现有行为不变）
+    "墨线": "Inker",
+    "字母": "Letterer",
+    "封面": "CoverArtist",
+    "编辑": "Editor",
+    # 日文 infobox key
+    "ストーリー": "Writer",           # Story/故事
+    "原案": "Writer",                 # Original Plan/原案
+    "監督": "Writer",                 # Director/监督
+    "演出": "Writer",                 # Direction/演出
+    "コミカライズ": "Penciller",       # Comicalize/漫画化
+    "イラスト": "Penciller",           # Illustration/插画
+    "キャラクターデザイン": "Penciller",  # Character Design
+    "メカニックデザイン": "Penciller",    # Mechanic Design
+    "オリジナルキャラクターデザイン": "Penciller",  # Original Character Design
+}
+
+# 主要三栏（Writer/Penciller/Colorist）+ 既有次要职务栏位
+_AUTHOR_FIELDS = ["Writer", "Penciller", "Colorist",
+                  "Inker", "Letterer", "CoverArtist", "Editor"]
+
+
+def _infobox_value_names(value) -> List[str]:
+    """提取 infobox 字段值中的人名列表（兼容 list[dict{v}] / list[str] / str）"""
+    names = []
+    if isinstance(value, list):
+        for v in value:
+            if isinstance(v, dict):
+                v_value = v.get("v")
+                if isinstance(v_value, str) and v_value.strip():
+                    names.append(v_value)
+            elif isinstance(v, str) and v.strip():
+                names.append(v)
+    elif isinstance(value, str) and value.strip():
+        names.append(value)
+    return names
+
+
+def extract_bangumi_authors_merged(detail: Optional[Dict],
+                                   persons: Optional[List[Dict]] = None) -> Dict[str, List[str]]:
+    """合并 infobox + persons 两端点作者，按人物职务分类（Writer/Penciller/Colorist 为主）
+
+    规则：
+    - infobox 优先、persons 补充，两端点每次都合并（非「缺才补」按需优化）；
+    - persons 只保留人物职务（作者/原作/作画/脚本/插画/上色/色彩/监督/导演/原著等），
+      出版社/连载杂志/书系/出品方等非人物职务一律过滤；
+    - 同一人名跨端点只进一个字段（优先 infobox 的职务映射）；
+    - relation 命名不一致以同义归一（如 persons「作者」= infobox「作画」→ Penciller）；
+    - 多作者按 _split_authors 分隔符集合拆分。
+
+    Args:
+        detail: Bangumi 详情（含 infobox；可空）
+        persons: /v0/subjects/{id}/persons 返回的人物列表（可空）
+
+    Returns:
+        Dict[str, List[str]]: 按角色字段分类的作者名列表（保序去重）
+    """
+    fields: Dict[str, List[str]] = {f: [] for f in _AUTHOR_FIELDS}
+    seen = set()  # 跨端点去重：同一个人只进一个字段
+
+    def _add(field: str, raw_name: str) -> None:
+        for name in _split_authors(raw_name):
+            if name and name not in seen:
+                seen.add(name)
+                fields[field].append(name)
+
+    # 1. infobox（优先映射）
+    for item in (detail or {}).get("infobox", []) or []:
+        key = item.get("key", "")
+        field = PERSON_ROLE_TO_FIELD.get(key)
+        if not field:
+            continue
+        for raw_name in _infobox_value_names(item.get("value", "")):
+            _add(field, raw_name)
+
+    # 2. persons（补充；同名人已进字段则跳过）
+    for person in persons or []:
+        if not isinstance(person, dict):
+            continue
+        name = person.get("name", "")
+        field = PERSON_ROLE_TO_FIELD.get(person.get("relation", ""))
+        if not field or not name:
+            continue
+        _add(field, name)
+
+    return fields
+
+
+def extract_bangumi_authors(detail: Optional[Dict],
+                            persons: Optional[List[Dict]] = None) -> List[str]:
+    """从Bangumi详情中提取所有作者名（flat，匹配用）
+
+    infobox + persons 两端点人物职务合并；persons 提供时把人物职务并入，
+    避免文件夹作者=原作（infobox 仅作画）时匹配失败。
+
+    Args:
+        detail: Bangumi 详情（含 infobox；可空）
+        persons: /v0/subjects/{id}/persons 人物列表（可空）
+
+    Returns:
+        List[str]: 去重保序的作者名列表
+    """
     authors = []
-    infobox = detail.get("infobox", [])
-    
-    # 扩展的作者类型匹配，按优先级排序
-    author_types = [
-        # 中文
-        "作者", "作画", "原作", "脚本", "监督", "导演", "原著", "插画",
-        # 日文
-        "ストーリー", "コミカライズ", "原案", "脚本", "監督", "演出", "原作", "イラスト",
-        "キャラクターデザイン", "メカニックデザイン", "オリジナルキャラクターデザイン"
-    ]
-    
-    for author_type in author_types:
-        for item in infobox:
-            if item.get("key") == author_type:
-                value = item.get("value", "")
-                # 处理列表/字符串格式
-                if isinstance(value, list):
-                    for v in value:
-                        if isinstance(v, dict):
-                            v_value = v.get("v")
-                            if isinstance(v_value, str) and v_value.strip():
-                                # 分割并清理作者名字
-                                authors.extend(_split_authors(v_value))
-                elif isinstance(value, str) and value.strip():
-                    # 分割并清理作者名字
-                    authors.extend(_split_authors(value))
-    
-    # 去重并返回
-    return list(dict.fromkeys(authors))
+    for names in extract_bangumi_authors_merged(detail, persons).values():
+        for name in names:
+            if name not in authors:
+                authors.append(name)
+    return authors
 
 
 def extract_bangumi_authors_by_type( detail: Dict) -> Dict[str, List[str]]:

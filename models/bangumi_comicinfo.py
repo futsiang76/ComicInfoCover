@@ -5,63 +5,51 @@ Bangumi ComicInfo 构建模块 - 从详情数据生成 ComicInfo.xml 所需字�
 """
 
 import re
-from typing import Dict
+from typing import Dict, List, Optional
 
-from .author_utils import extract_bangumi_authors_by_type
+from .author_utils import extract_bangumi_authors_merged
 from .bangumi_genre import extract_bangumi_aliases, extract_bangumi_genre
 
 
-def build_comicinfo(detail: Dict, folder_info: Dict) -> Dict:
+def build_comicinfo(detail: Dict, folder_info: Dict,
+                    persons: Optional[List[Dict]] = None) -> Dict:
     """提取 ComicInfo.xml 所需字段
 
-    角色归类：Bangumi 中的「作者」实际是作画者；故事创作者（原作/脚本等）
-    归 Writer，绘画创作者（作者/作画等）归 Penciller。无任何作者时回退
-    文件夹作者。
+    角色归类（infobox + persons 两端点合并，跨端点按人名去重）：故事创作
+    （原作/脚本/监督/导演/原著等）归 Writer，绘画创作（作者/作画/插画等）
+    归 Penciller，上色（上色/色彩）归 Colorist。无任何作者时回退文件夹作者。
 
     Args:
         detail: Bangumi 详情数据（含 infobox/tags/summary 等）
         folder_info: 文件夹信息（series/author/complete/total_volumes 等）
+        persons: /v0/subjects/{id}/persons 人物列表（可空；并入分类）
 
     Returns:
-        Dict: ComicInfo 字段字典
+        Dict: ComicInfo 字段字典（Writer/Penciller/Colorist 字符串字段）
     """
-    author_types = extract_bangumi_authors_by_type(detail)
+    fields = extract_bangumi_authors_merged(detail, persons)
+    story_authors = fields["Writer"]     # 故事创作者
+    art_authors = fields["Penciller"]    # 绘画创作者
+    color_authors = fields["Colorist"]   # 上色
 
-    # 正确定义角色分类 - Bangumi中的"作者"实际上是作画者
-    story_roles = ["原作", "监督", "监制", "脚本", "导演", "原著"]  # 故事创作者
-    art_roles = ["作者", "作画", "制作", "插画", "绘制"]        # 绘画创作者
-
-    # 按角色分类收集
-    story_authors = []  # 故事相关（Writer）
-    art_authors = []    # 绘画相关（Penciller）
-
-    for role_type, authors in author_types.items():
-        if role_type in story_roles:
-            story_authors.extend(authors)
-        elif role_type in art_roles:
-            art_authors.extend(authors)
-
-    # 去重
-    story_authors = list(dict.fromkeys(story_authors))
-    art_authors = list(dict.fromkeys(art_authors))
-
-    # 应用规则
-    if len(story_authors) == 0 and len(art_authors) == 0:
+    # 应用规则（Writer/Penciller 单向补齐：无画师时画师填原作，反之亦然）
+    if not story_authors and not art_authors:
         # 没有任何作者信息，使用文件夹作者
         writer_str = folder_info["author"]
         penciller_str = ""
-    elif len(story_authors) == 0 and len(art_authors) > 0:
-        # 只有绘画作者（包括Bangumi的"作者"），全部放入Writer，Penciller留空
+    elif not story_authors and art_authors:
+        # 只有绘画作者（包括Bangumi的"作者"），Penciller 放画师，Writer 补齐
         writer_str = ", ".join(art_authors)
-        penciller_str = ""
-    elif len(story_authors) > 0 and len(art_authors) == 0:
-        # 只有故事作者，全部放入Writer，Penciller留空
+        penciller_str = ", ".join(art_authors)
+    elif story_authors and not art_authors:
+        # 只有故事作者，Writer 放原作，Penciller 补齐
         writer_str = ", ".join(story_authors)
-        penciller_str = ""
+        penciller_str = ", ".join(story_authors)
     else:
         # 同时有故事作者和绘画作者，分别放入对应字段
         writer_str = ", ".join(story_authors)
         penciller_str = ", ".join(art_authors)
+    colorist_str = ", ".join(color_authors)
 
     # 根据完结状态决定Volume字段
     # 如果已完结，填写总卷数；如果连载中，留空
@@ -75,6 +63,7 @@ def build_comicinfo(detail: Dict, folder_info: Dict) -> Dict:
         "Volume": "",  # 单本书的卷数将在后续处理中填充
         "Writer": writer_str,
         "Penciller": penciller_str,
+        "Colorist": colorist_str,
         "Publisher": "",
         "Summary": "",
         "Tags": "",

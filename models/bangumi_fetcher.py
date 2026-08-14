@@ -69,6 +69,8 @@ class BangumiFetcher:
 
         # 网页作者兜底缓存：同一 subject_id 只抓取一次（实例内生效）
         self._web_authors_cache: Dict[int, List[str]] = {}
+        # persons 端点缓存：同一 subject_id 只请求一次（实例内生效）
+        self._persons_cache: Dict[int, List[Dict]] = {}
 
     def _request_json(self, method: str, path: str,
                       params: Optional[Dict] = None,
@@ -324,10 +326,51 @@ class BangumiFetcher:
         self._web_authors_cache[subject_id] = authors
         return authors
 
-    def extract_bangumi_authors(self, detail: Dict) -> List[str]:
-        """包装方法：委托到 author_utils"""
+    def get_manga_persons(self, subject_id: int) -> List[Dict]:
+        """获取条目人物列表（含 relation 职务字段），走 v0 GET {base}/v0/subjects/{id}/persons
+
+        官方与镜像同路径；直连所选数据源域名，不做自动 failover。带实例级
+        缓存：同一 subject_id 只请求一次；失败静默降级返回空列表（与
+        fetch_web_authors 同一降级模式），不抛异常、不打印错误。
+
+        Args:
+            subject_id: Bangumi 条目 ID
+
+        Returns:
+            List[Dict]: 人物列表（每项含 name/relation/career/type 等）；
+                        无人物或失败返回空列表
+        """
+        if subject_id in self._persons_cache:
+            return self._persons_cache[subject_id]
+        persons: List[Dict] = []
+        path = f"/v0/subjects/{subject_id}/persons"
+        limit, offset = 100, 0
+        try:
+            while True:
+                resp = self.session.get(self._base_url + path,
+                                        params={"limit": limit, "offset": offset},
+                                        timeout=TIMEOUT, verify=False)
+                resp.raise_for_status()
+                payload = resp.json()
+                # persons 端点返回裸 list（官方与镜像实测）；兼容 dict{"data": [...]} 形态
+                if isinstance(payload, list):
+                    items = [i for i in payload if isinstance(i, dict)]
+                else:
+                    items = [i for i in (payload.get("data") or []) if isinstance(i, dict)]
+                persons.extend(items)
+                if len(items) < limit or offset >= 400:  # 上限保护，防异常分页
+                    break
+                offset += limit
+        except (requests.exceptions.RequestException, ValueError):
+            persons = []  # 失败静默降级：与 fetch_web_authors 一致，不重试
+        self._persons_cache[subject_id] = persons
+        return persons
+
+    def extract_bangumi_authors(self, detail: Dict,
+                                persons: Optional[List[Dict]] = None) -> List[str]:
+        """包装方法：委托到 author_utils（persons 可选并入，跨端点合并）"""
         from .author_utils import extract_bangumi_authors as _extract
-        return _extract(detail)
+        return _extract(detail, persons)
 
     def extract_bangumi_authors_by_type(self, detail: Dict) -> Dict[str, List[str]]:
         """包装方法：委托到 author_utils"""
@@ -341,4 +384,11 @@ class BangumiFetcher:
 
     def extract_comicinfo(self, detail: Dict, folder_info: Dict) -> Dict:
         """提取 ComicInfo.xml 所需字段（委托到 bangumi_comicinfo.build_comicinfo）"""
-        return build_comicinfo(detail, folder_info)
+        persons = []
+        subject_id = detail.get("id") if detail else None
+        if subject_id:
+            try:
+                persons = self.get_manga_persons(int(subject_id))
+            except (TypeError, ValueError):
+                persons = []
+        return build_comicinfo(detail, folder_info, persons)

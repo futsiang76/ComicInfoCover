@@ -89,8 +89,9 @@ class SelectorHandler:
         # 获取详细信息
         detail = self.fetcher.get_manga_detail(subject_id)
         
-        # 提取各种信息
-        authors = self.fetcher.extract_bangumi_authors(detail) if detail else []
+        # 提取各种信息（persons 并入，跨端点合并去重）
+        persons = self.fetcher.get_manga_persons(subject_id) if detail else []
+        authors = self.fetcher.extract_bangumi_authors(detail, persons) if detail else []
         year = self._extract_year(detail)
         tags = self._extract_tags(detail)
         aliases = self._extract_aliases(detail)

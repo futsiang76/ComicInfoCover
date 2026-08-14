@@ -37,18 +37,21 @@ _PREFIX_BYTES = 4096
 
 
 def is_cover_ratio_ok(width: int, height: int) -> bool:
-    """判断封面宽高比是否在标准范围（870x1230 ±10%，即 0.643~0.778）
+    """判断封面宽高比是否合格（继承 007 ConfigManager.is_valid_aspect_ratio 单边容差逻辑）
 
-    继承 007 ConfigManager.is_valid_aspect_ratio 的双边容差逻辑：
-    超范围（过大如横版扫描图、过瘦长）均视为「需裁剪」异常。
+    - 宽高比 ≤ 标准比例（0.707）：合格（更瘦长的纵向图无需裁剪，无下界）
+    - 宽高比 > 标准比例：仅当在标准比例 +10% 容差内（≤0.778）才合格，过宽需裁剪
     """
     if width <= 0 or height <= 0:
         return False
     aspect = width / height
     standard = STANDARD_WIDTH / STANDARD_HEIGHT
-    low = standard / (1 + ASPECT_RATIO_TOLERANCE)
-    high = standard * (1 + ASPECT_RATIO_TOLERANCE)
-    return low <= aspect <= high
+    # 比标准更瘦长的纵向图视为正常，直接合格
+    if aspect <= standard:
+        return True
+    # 否则检查是否在容差范围内（仅上界）
+    max_ratio = standard * (1 + ASPECT_RATIO_TOLERANCE)
+    return aspect <= max_ratio
 
 
 def split_segments(filename: str) -> List[str]:
@@ -72,8 +75,45 @@ def _compare_segment(a: str, b: str) -> int:
     return 0
 
 
+def _natural_key(text: str) -> list:
+    """自然排序 key：数字段按数值比较（'C 02' < 'C 10'），非数字段按字典序
+
+    元组首元素为类型标记（0=数字、1=文本），避免数字段与非数字段直接比较报错。
+    """
+    return [
+        (0, int(part)) if part.isdigit() else (1, part)
+        for part in re.split(r"(\d+)", text.lower())
+    ]
+
+
+def _compare_natural(a: str, b: str) -> int:
+    """自然比较两个字符串：数字段按数值、非数字段按字典序（目录段排序用）"""
+    key_a, key_b = _natural_key(a), _natural_key(b)
+    if key_a != key_b:
+        return -1 if key_a < key_b else 1
+    return 0
+
+
+def _dir_segments(filename: str) -> List[str]:
+    """完整路径的目录段列表（不含文件名，按 / 拆分，兼容 \\）"""
+    parts = filename.replace("\\", "/").split("/")
+    return parts[:-1]
+
+
 def _custom_compare(f1: str, f2: str) -> int:
-    """分段逐位比较（拷贝自 007 custom_compare，取排序最小者为默认封面）"""
+    """复合排序：先按目录层级自然序，目录相同再按 007 分段规则比文件名
+
+    - 目录比较：逐级自然序（'C 01' < 'C 02' < 'C 10'），目录层级浅的排前
+    - 文件名比较：沿用 007 分段语义（"01" 排在 "1" 前、数字按数值）
+    - 根目录文件（无子目录）目录段为空，排在任何子目录文件前
+    """
+    dirs1, dirs2 = _dir_segments(f1), _dir_segments(f2)
+    for d1, d2 in zip(dirs1, dirs2):
+        result = _compare_natural(d1, d2)
+        if result != 0:
+            return result
+    if len(dirs1) != len(dirs2):
+        return len(dirs1) - len(dirs2)
     segs1 = split_segments(f1)
     segs2 = split_segments(f2)
     for s1, s2 in zip(segs1, segs2):
@@ -84,7 +124,7 @@ def _custom_compare(f1: str, f2: str) -> int:
 
 
 def sort_cover_files(filenames: List[str]) -> List[str]:
-    """按 007 分段排序规则排序 zip 内图片，返回列表首项即默认封面"""
+    """按（目录层级自然序 → 007 文件名分段）排序 zip 内图片，返回列表首项即默认封面"""
     return sorted(filenames, key=cmp_to_key(_custom_compare))
 
 

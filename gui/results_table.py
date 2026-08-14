@@ -78,15 +78,14 @@ EDIT_BTN_STYLE = """
 
 EXPAND_BTN_STYLE = """
     QPushButton {
-        background-color: #f0f0f0;
-        color: #555;
+        background-color: #4CAF50;
+        color: white;
         font-size: 12px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
+        border-radius: 3px;
         padding: 4px 12px;
     }
     QPushButton:hover {
-        background-color: #e0e0e0;
+        background-color: #45a049;
     }
 """
 

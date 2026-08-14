@@ -87,11 +87,13 @@ class SearchHandler:
     def _extract_result_authors(self, result: Dict) -> List[str]:
         """从单个搜索结果提取 Bangumi 作者
 
-        优先经详情接口 infobox 提取；为空（老条目 infobox 无作者字段）时
-        兜底抓取网页信息栏提取作者。
+        每次都调 persons 端点（与 infobox 合并，跨端点按人名去重，避免
+        文件夹作者=原作时 infobox 仅作画导致匹配失败）；仍为空（老条目
+        infobox 无作者字段且 persons 无人物）时兜底抓取网页信息栏提取作者。
         """
+        persons = self.fetcher.get_manga_persons(result["id"])
         detail = self.fetcher.get_manga_detail(result["id"])
-        authors = self.fetcher.extract_bangumi_authors(detail) if detail else []
+        authors = self.fetcher.extract_bangumi_authors(detail, persons)
         if not authors:
             authors = self.fetcher.fetch_web_authors(result["id"])
         return authors

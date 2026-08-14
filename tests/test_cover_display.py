@@ -65,14 +65,20 @@ def test_is_cover_ratio_ok_standard():
 
 
 def test_is_cover_ratio_ok_within_tolerance():
-    """容差内（0.643~0.778）判定为正常"""
+    """比标准略宽但在 +10% 容差内（≤0.778）判定为正常"""
     assert is_cover_ratio_ok(800, 1230) is True   # 0.650
     assert is_cover_ratio_ok(956, 1230) is True   # 0.777
 
 
+def test_is_cover_ratio_ok_skinnier_than_standard():
+    """比标准更瘦长的纵向图（无下界）判定为正常（007 单边逻辑）"""
+    assert is_cover_ratio_ok(980, 1542) is True   # 0.636 天狱案例
+    assert is_cover_ratio_ok(790, 1230) is True   # 0.642
+    assert is_cover_ratio_ok(600, 1000) is True   # 0.600
+
+
 def test_is_cover_ratio_ok_out_of_tolerance():
-    """容差外（过瘦长 / 横向扫描图）判定为异常"""
-    assert is_cover_ratio_ok(790, 1230) is False  # 0.642 < 下界
+    """超过上界（过宽 / 横向扫描图）判定为异常"""
     assert is_cover_ratio_ok(958, 1230) is False  # 0.779 > 上界
 
 
