@@ -8,7 +8,7 @@ import re
 from typing import Dict
 
 from .author_utils import extract_bangumi_authors_by_type
-from .bangumi_genre import extract_bangumi_genre
+from .bangumi_genre import extract_bangumi_aliases, extract_bangumi_genre
 
 
 def build_comicinfo(detail: Dict, folder_info: Dict) -> Dict:
@@ -108,6 +108,8 @@ def build_comicinfo(detail: Dict, folder_info: Dict) -> Dict:
     tags = [t for t in tags if t not in genre_tags]
     tags = [t for t in tags if not re.match(r"^\d+$", t)]  # 去掉纯数字（如 2024）
     remaining = list(tags)
+    # 追加系列别名（infobox「别名」+ 日文原名）；与 Genre 词重复的别名同样剔除
+    remaining.extend(a for a in extract_bangumi_aliases(detail) if a not in genre_tags)
     remaining.append(info["Status"])
     info["Tags"] = ",".join(dict.fromkeys(remaining))  # 去重（保留顺序）
 

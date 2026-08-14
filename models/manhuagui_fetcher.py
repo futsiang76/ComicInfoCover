@@ -59,18 +59,41 @@ class ManhuaguiFetcher:
     # 搜索
     # ------------------------------------------------------------------
     def search_manga(self, keyword: str) -> list[dict]:
-        """搜索漫画，返回 [{title, url, cover, author}]，失败返回 []
+        """搜索漫画，返回 [{title, url, cover, author, intro}]，失败返回 []
+
+        站点标题繁简不确定（如「列印」vs「打印」），因此原词与简体转换词
+        各搜一次，合并结果按 url 去重（保留先原词后简体的顺序）。
 
         Args:
             keyword: 搜索关键词（系列名）
 
         Returns:
-            list[dict]: 搜索结果列表；未找到或抓取失败时为空列表
+            list[dict]: 搜索结果列表；全部变体均未找到或抓取失败时为空列表
+        """
+        variants = []
+        for v in (keyword, convert(keyword, "zh-cn")):  # 原词 + 繁转简
+            if v and v not in variants:
+                variants.append(v)
+        if not variants:
+            return []
+
+        merged = []  # 合并结果（按 url 去重，保序）
+        seen_urls = set()
+        for variant in variants:
+            for item in self._search_variant(variant):
+                if item["url"] not in seen_urls:
+                    seen_urls.add(item["url"])
+                    merged.append(item)
+        return merged
+
+    def _search_variant(self, keyword: str) -> list[dict]:
+        """按单个关键词搜索；无结果或失败返回 []，不抛异常
+
+        单个变体失败（goto 失败 / wait_for_selector 超时）由调用方捕获继续。
         """
         try:
             self._ensure_browser()
-            keyword_cn = convert(keyword, "zh-cn")  # 繁转简，对齐 Bangumi 搜索
-            url = f"{self.base_url}/s/{quote(keyword_cn)}.html"
+            url = f"{self.base_url}/s/{quote(keyword)}.html"
             self._page.goto(url, wait_until="domcontentloaded", timeout=self.NAV_TIMEOUT)
             # 等待结果列表出现；搜索无结果时页面不含 li.cf，也会超时后走 except 返回 []
             self._page.wait_for_selector("li.cf", timeout=self.WAIT_TIMEOUT)
@@ -212,7 +235,11 @@ class ManhuaguiFetcher:
 
         # 标题：中文 h1 + 别名（英文/日文）拼进 Title/Series
         alt_title = aliases[0] if aliases else ""
-        subtitle = self._text("h2")  # 副标题为另一个翻译（中文/英文），优先作为 LocalizedTitle
+        subtitle = self._text(".book-title h2")  # 副标题为另一个翻译（中文/英文），优先作为 LocalizedTitle
+        # h2 清洗后也作为别名进 Tags：去首尾空白与横杠（'-'/'—'/'- ' 等），与 title/详情别名去重
+        h2_alias = re.sub(r"^[-—\s]+|[-—\s]+$", "", subtitle or "").strip()
+        if h2_alias and h2_alias != title and h2_alias not in aliases:
+            aliases.insert(0, h2_alias)
         localized_title = subtitle if subtitle and subtitle != title else alt_title
 
         comic_info = {

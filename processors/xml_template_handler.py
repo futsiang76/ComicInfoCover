@@ -90,6 +90,7 @@ class XMLTemplateHandler:
         
         # 处理作者信息 - 使用BangumiFetcher的方法
         from models.bangumi_fetcher import BangumiFetcher, extract_bangumi_genre
+        from models.bangumi_genre import extract_bangumi_aliases
         fetcher = BangumiFetcher()
         
         # 使用BangumiFetcher的extract_bangumi_authors_by_type方法
@@ -142,6 +143,8 @@ class XMLTemplateHandler:
             tags = [t for t in tags if t not in genre_tags]
             tags = [t for t in tags if not re.match(r"^\d+$", t)]  # 去掉纯数字（如 2024）
             remaining = list(tags)
+            # 追加系列别名（infobox「别名」+ 日文原名）；与 Genre 词重复的别名同样剔除
+            remaining.extend(a for a in extract_bangumi_aliases(bangumi_data) if a not in genre_tags)
             remaining.append(template.get("Status", ""))
             template["Tags"] = ", ".join(dict.fromkeys(remaining))
         

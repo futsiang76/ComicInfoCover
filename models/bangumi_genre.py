@@ -4,7 +4,10 @@
 Bangumi Genre 提取模块 - tag 白名单与 Genre 字符串生成
 """
 
-from typing import Dict
+import re
+from typing import Dict, List
+
+from .bangumi_volume_filter import _VOLUME_MARKER_RE
 
 # 可作 Genre 的 Bangumi tag 白名单（按分类聚合）
 BANGUMI_GENRE_WHITELIST = {
@@ -37,3 +40,82 @@ def extract_bangumi_genre(detail: Dict) -> str:
                 seen.add(tag)
                 break
     return ", ".join(genre) if genre else ""
+
+
+# 名称中需清理的卷标/版本信息（如 (V01)）——在 _VOLUME_MARKER_RE 基础上补充
+# 括号内带字母的卷标（(V01)/(Vol.1)），并清理正则移除后残留的空括号
+_NAME_VOLUME_CLEAN_RE = re.compile(
+    r"[（(]\s*(?:vol\.?\s*|V)\d+\s*[）)]"  # (V01) (Vol.1) （V2）
+    r"|(?:vol\.?\s*|#)\d+",                # Vol.1 / #1（裸卷标）
+    re.IGNORECASE,
+)
+
+
+def _clean_name_for_alias(name: str) -> str:
+    """清理名称中的卷标/版本信息，返回清理后的名称（无效则返回空串）
+
+    复用 _VOLUME_MARKER_RE（括号数字/第X卷/裸 V1）后再补 (V01) 形态并
+    去除残留的空括号与首尾空白。
+    """
+    if not name:
+        return ""
+    cleaned = _VOLUME_MARKER_RE.sub("", name)
+    cleaned = _NAME_VOLUME_CLEAN_RE.sub("", cleaned)
+    cleaned = re.sub(r"[（(]\s*[）)]", "", cleaned)  # 清理残留空括号
+    return cleaned.strip(" -_()（）")
+
+
+def extract_bangumi_aliases(detail: Dict) -> List[str]:
+    """从 Bangumi 详情提取系列别名（infobox「别名」+ 日文原名）
+
+    两个来源（按此顺序追加）：
+    1. infobox 中 key=「别名」的字段：value 为 list，每项可能是
+       {"v": "..."} 或 {"k": "来源", "v": "..."}，只取每项的 v 值
+       （来源前缀 k 不拼进别名）
+    2. detail["name"]（原名）：非空且与 name_cn 不同时作为别名加入
+       （如 進撃の巨人、ガチアクタ），自动清理 (V01) 等卷标/版本信息
+
+    返回去重保序的列表；空串、纯数字（如 2024）剔除；name_cn 本身不进结果。
+
+    Args:
+        detail: Bangumi 详情数据（含 infobox/name/name_cn）
+
+    Returns:
+        List[str]: 系列别名列表（无则空列表）
+    """
+    aliases = []
+
+    # 1) infobox「别名」字段
+    for item in detail.get("infobox", []) or []:
+        if item.get("key") != "别名":
+            continue
+        value = item.get("value", [])
+        if not isinstance(value, list):
+            continue
+        for entry in value:
+            if isinstance(entry, dict) and entry.get("v"):
+                alias = str(entry["v"]).strip()
+                if alias:
+                    aliases.append(alias)
+            elif isinstance(entry, str) and entry.strip():
+                aliases.append(entry.strip())
+
+    # 2) 日文原名（与 name_cn 不同时作为别名）
+    name = (detail.get("name") or "").strip()
+    name_cn = (detail.get("name_cn") or "").strip()
+    if name and name != name_cn:
+        cleaned = _clean_name_for_alias(name)
+        if cleaned:
+            aliases.append(cleaned)
+
+    # 去重保序 + 剔除纯数字/空串
+    result = []
+    seen = set()
+    for alias in aliases:
+        if not alias or alias in seen:
+            continue
+        if re.match(r"^\d+$", alias):
+            continue
+        result.append(alias)
+        seen.add(alias)
+    return result
