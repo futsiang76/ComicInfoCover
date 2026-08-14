@@ -267,6 +267,7 @@ class BangumiFetcher:
                         "name": detail.get("name", ""),
                         "name_cn": detail.get("name_cn", ""),
                         "series": detail.get("series", False),  # 详情接口同样带 series，供统一过滤
+                        "platform": detail.get("platform", ""),  # 详情接口同样带 platform，供弹窗「（漫画系列）」后缀渲染
                         "rating": detail.get("rating", {})
                     })
             # 与 API 搜索统一：逐条过滤 series=False 且名称带卷号标记的条目
