@@ -97,13 +97,13 @@ class SaveThread(QThread):
                     is_locked = filename in locked_files
                     if detail.get("volume"):
                         file_comic_info["Volume"] = detail["volume"]
-                        file_comic_info["Number"] = ""
+                        file_comic_info["Number"] = detail["volume"]
                     else:
                         # 解析卷数信息
                         vol_info = parse_volume_from_filename(filename)
                         if vol_info.get("number") and vol_info["number"].strip():
                             file_comic_info["Volume"] = vol_info["number"]
-                            file_comic_info["Number"] = ""
+                            file_comic_info["Number"] = vol_info["number"]
                         else:
                             import re
                             chapter_match = re.search(r'(C\s*\d+|第\s*\d+\s*话)', filename, re.IGNORECASE)

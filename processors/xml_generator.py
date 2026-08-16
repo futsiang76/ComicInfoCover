@@ -114,7 +114,8 @@ class XMLGenerator:
             file_comic_info.update({
                 "Title": smart_title,  # 使用智能生成的标题
                 "Count": base_comic_info.get("Count", ""),  # 已完结填写总卷数，连载中留空
-                "Volume": file_vol_info['number']  # 单本书的卷数
+                "Volume": file_vol_info['number'],  # 单本书的卷数
+                "Number": file_vol_info['number'],  # 新增：Number 与 Volume 同值
             })
         else:
             # 检查是否为单话文件（C01、C 01、第01话等）
