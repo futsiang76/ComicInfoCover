@@ -99,7 +99,7 @@ def on_edit_xml_clicked(mw):
     from processors.utils import process_xml_modify_folder
     from processors.result_builder import create_result_dict_from_xml
     from parsers.folder_parser import parse_folder_name_lenient
-    from processors.xml_generator import XMLGenerator, build_full_comicinfo_dict
+    from processors.xml_generator import XMLGenerator, apply_volume_number, build_full_comicinfo_dict
     from processors.zip_handler import add_file_to_zip
 
     current_dir = mw.path_edit.text().strip()
@@ -145,16 +145,18 @@ def on_edit_xml_clicked(mw):
             mw.scan_results = []
             return
 
-        # 保存：每个系列的结果写入各自目录
+        # 保存：每个系列的结果写入各自目录（per-file 推导 Volume/Number）
         for i, r in enumerate(mw.scan_results):
             comic_info = build_full_comicinfo_dict(result=r)
-            xml_content = XMLGenerator().generate_comicinfo_xml(comic_info)
 
             folder_path = r.get("folder_path", current_dir)
             for f in os.listdir(folder_path):
                 if not f.lower().endswith(('.zip', '.cbz')):
                     continue
                 try:
+                    file_info = comic_info.copy()
+                    apply_volume_number(file_info, f, r.get("file_details", {}).get(f, {}))
+                    xml_content = XMLGenerator().generate_comicinfo_xml(file_info)
                     add_file_to_zip(os.path.join(folder_path, f), xml_content)
                 except Exception:
                     pass
@@ -195,7 +197,6 @@ def on_edit_xml_clicked(mw):
         return
 
     comic_info = build_full_comicinfo_dict(result=updated_data)
-    xml_content = XMLGenerator().generate_comicinfo_xml(comic_info)
 
     success_count = 0
     fail_count = 0
@@ -203,6 +204,9 @@ def on_edit_xml_clicked(mw):
         if not f.lower().endswith(('.zip', '.cbz')):
             continue
         try:
+            file_info = comic_info.copy()
+            apply_volume_number(file_info, f, result.get("file_details", {}).get(f, {}))
+            xml_content = XMLGenerator().generate_comicinfo_xml(file_info)
             if add_file_to_zip(os.path.join(current_dir, f), xml_content):
                 success_count += 1
             else:
@@ -229,7 +233,7 @@ def edit_zip_xml(parent: QWidget, zip_path: str) -> bool:
         True if changes were saved, False otherwise
     """
     from processors.zip_handler import read_xml_from_zip, add_file_to_zip
-    from processors.xml_generator import XMLGenerator, build_full_comicinfo_dict
+    from processors.xml_generator import XMLGenerator, apply_volume_number, build_full_comicinfo_dict
 
     if not os.path.isfile(zip_path):
         QMessageBox.warning(parent, "错误", f"文件不存在:\n{zip_path}")
@@ -255,6 +259,10 @@ def edit_zip_xml(parent: QWidget, zip_path: str) -> bool:
         return False
 
     comic_info = build_full_comicinfo_dict(result=updated_data)
+    # 单文件编辑：保留原 XML 中的 Volume/Number（避免保存时丢失）
+    apply_volume_number(comic_info, filename,
+                        {"volume": xml_data.get("Volume", ""),
+                         "number": xml_data.get("Number", "")})
 
     try:
         xml_content = XMLGenerator().generate_comicinfo_xml(comic_info)

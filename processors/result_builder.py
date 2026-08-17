@@ -230,6 +230,7 @@ def create_result_dict_from_xml(folder_path: str, folder_info: Dict,
             if file_xml:
                 file_details[f] = {
                     "volume": file_xml.get("Volume", vol_info.get("number", "")),
+                    "number": file_xml.get("Number", ""),
                     "year": file_xml.get("Year", ""),
                     "month": file_xml.get("Month", ""),
                     "summary": file_xml.get("Summary", "")

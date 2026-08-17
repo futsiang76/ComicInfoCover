@@ -4,7 +4,7 @@
 XML生成器模块 - 负责生成ComicInfo.xml内容
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from processors.xml_template_handler import XMLTemplateHandler
 
@@ -176,6 +176,41 @@ class XMLGenerator:
             text = text.replace(char, replacement)
         
         return text
+
+
+def apply_volume_number(file_comic_info: Dict[str, Any], filename: str,
+                        detail: Optional[Dict] = None) -> None:
+    """为单个漫画文件推导并原地写入 Volume/Number。
+
+    规则：detail 有 volume → 单行本（Number 取 detail 的 number，缺省同 volume）；
+    detail 无 volume 但有 number → 单话（Number=话号，Volume 空）；否则按文件名解析
+    （单行本 Number=Volume 同值；C01/第01话 → Number=话号 Volume 空；其它 → 都空）。
+    """
+    import re
+    from parsers.file_parser import parse_volume_from_filename
+
+    detail = detail or {}
+    if detail.get("volume"):
+        file_comic_info["Volume"] = detail["volume"]
+        file_comic_info["Number"] = detail.get("number") or detail["volume"]
+    elif detail.get("number"):
+        file_comic_info["Number"] = detail["number"]
+        file_comic_info["Volume"] = ""
+    else:
+        vol_info = parse_volume_from_filename(filename)
+        if vol_info.get("number") and vol_info["number"].strip():
+            file_comic_info["Volume"] = vol_info["number"]
+            file_comic_info["Number"] = vol_info["number"]
+        else:
+            chapter_match = re.search(r'(C\s*\d+|第\s*\d+\s*话)', filename, re.IGNORECASE)
+            if chapter_match:
+                number_match = re.search(r'\d+', chapter_match.group(1))
+                if number_match:
+                    file_comic_info["Number"] = number_match.group()
+                    file_comic_info["Volume"] = ""
+            else:
+                file_comic_info["Volume"] = ""
+                file_comic_info["Number"] = ""
 
 
 def build_full_comicinfo_dict(result=None, **overrides) -> Dict[str, Any]:

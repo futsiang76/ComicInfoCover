@@ -43,8 +43,7 @@ class SaveThread(QThread):
         return total
 
     def run(self) -> None:
-        from parsers.file_parser import parse_volume_from_filename
-        from processors.xml_generator import XMLGenerator, build_full_comicinfo_dict
+        from processors.xml_generator import XMLGenerator, apply_volume_number, build_full_comicinfo_dict
         from processors.zip_handler import add_file_to_zip, check_zip_xml_files
 
         xml_generator = XMLGenerator()
@@ -95,26 +94,7 @@ class SaveThread(QThread):
                     # 如果 file_details 中有该文件的信息，覆盖
                     detail = file_details.get(filename, {})
                     is_locked = filename in locked_files
-                    if detail.get("volume"):
-                        file_comic_info["Volume"] = detail["volume"]
-                        file_comic_info["Number"] = detail["volume"]
-                    else:
-                        # 解析卷数信息
-                        vol_info = parse_volume_from_filename(filename)
-                        if vol_info.get("number") and vol_info["number"].strip():
-                            file_comic_info["Volume"] = vol_info["number"]
-                            file_comic_info["Number"] = vol_info["number"]
-                        else:
-                            import re
-                            chapter_match = re.search(r'(C\s*\d+|第\s*\d+\s*话)', filename, re.IGNORECASE)
-                            if chapter_match:
-                                number_match = re.search(r'\d+', chapter_match.group(1))
-                                if number_match:
-                                    file_comic_info["Number"] = number_match.group()
-                                    file_comic_info["Volume"] = ""
-                            else:
-                                file_comic_info["Volume"] = ""
-                                file_comic_info["Number"] = ""
+                    apply_volume_number(file_comic_info, filename, detail)
 
                     # 锁住的文件：用 file_details 中的独立值覆盖系列级数据
                     # 未锁住的文件：year/month/summary 跟随系列级数据
