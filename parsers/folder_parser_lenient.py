@@ -142,11 +142,19 @@ def _split_round_tags(c):
     for seg in c.split():
         if not seg:
             continue
-        tags.append(seg)
         if "+" in seg:
-            for ep in (p.strip() for p in seg.split("+")[1:]):
-                if ep and ep not in extras:
-                    extras.append(ep)
+            pieces = seg.split("+")
+            for i, piece in enumerate(pieces):
+                piece = piece.strip()
+                if not piece:
+                    continue
+                tag = piece if i == 0 else "+" + piece
+                if tag not in tags:
+                    tags.append(tag)
+                if i >= 1 and piece not in extras:
+                    extras.append(piece)
+        else:
+            tags.append(seg)
         low = seg.lower()
         if any(w in low for w in _HINTS_COMPLETE):
             complete_hint = True

@@ -272,7 +272,8 @@ class TestEdgeCases:
         assert r["complete"] is True
         assert r["vol_type"] == "已完结"
         assert any("连载版" in t for t in r["tags"])   # 连载版 留在 tag（版本属性）
-        assert "连载版+外传" in r["tags"]
+        assert "连载版" in r["tags"]
+        assert "+外传" in r["tags"]
         assert r["extras"] == "外传"                     # +外传 → extras
         assert r["has_extras"] is True
 
@@ -292,3 +293,14 @@ class TestEdgeCases:
         r = parse_folder_name("[富坚义博] 全职猎人 HUNTER×HUNTER (V35全)")
         assert r is not None
         assert r["series"] == "全职猎人"
+
+    def test_plus_multi_extras_split(self):
+        # L138: + 连接的多个附加内容（无空格）按 + 拆成独立 tag，+ 保留为前缀
+        r = _parse("[和月伸宏] 浪客剑心完全版 (V22全+剑心皆传+剧场版)")
+        assert r["series"] == "浪客剑心完全版"
+        assert r["total_volumes"] == 22
+        assert r["complete"] is True
+        assert "+剑心皆传" in r["tags"]
+        assert "+剧场版" in r["tags"]
+        assert "+剑心皆传+剧场版" not in r["tags"]
+        assert r["extras"] == "剑心皆传+剧场版"
