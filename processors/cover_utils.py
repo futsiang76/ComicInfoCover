@@ -79,10 +79,13 @@ def _natural_key(text: str) -> list:
     """自然排序 key：数字段按数值比较（'C 02' < 'C 10'），非数字段按字典序
 
     元组首元素为类型标记（0=数字、1=文本），避免数字段与非数字段直接比较报错。
+    数字段追加 -len(part) 维度实现 Komga 的「01 排在 1 前」前导零语义
+    （同数值下位数多者排前）；re.split 产生的空串直接过滤。
     """
     return [
-        (0, int(part)) if part.isdigit() else (1, part)
+        (0, int(part), -len(part)) if part.isdigit() else (1, part)
         for part in re.split(r"(\d+)", text.lower())
+        if part != ""
     ]
 
 
@@ -101,10 +104,11 @@ def _dir_segments(filename: str) -> List[str]:
 
 
 def _custom_compare(f1: str, f2: str) -> int:
-    """复合排序：先按目录层级自然序，目录相同再按 007 分段规则比文件名
+    """复合排序：先按目录层级自然序，目录相同再按文件名自然序
 
     - 目录比较：逐级自然序（'C 01' < 'C 02' < 'C 10'），目录层级浅的排前
-    - 文件名比较：沿用 007 分段语义（"01" 排在 "1" 前、数字按数值）
+    - 文件名比较：自然序（与 Komga 0.37+ 一致），'00a' 排在 '004' 前
+      （数字段按数值：0 < 4），前导零同数值时位数多者排前（'001' < '01' < '1'）
     - 根目录文件（无子目录）目录段为空，排在任何子目录文件前
     """
     dirs1, dirs2 = _dir_segments(f1), _dir_segments(f2)
@@ -114,17 +118,11 @@ def _custom_compare(f1: str, f2: str) -> int:
             return result
     if len(dirs1) != len(dirs2):
         return len(dirs1) - len(dirs2)
-    segs1 = split_segments(f1)
-    segs2 = split_segments(f2)
-    for s1, s2 in zip(segs1, segs2):
-        result = _compare_segment(s1, s2)
-        if result != 0:
-            return result
-    return len(segs1) - len(segs2)
+    return _compare_natural(os.path.basename(f1), os.path.basename(f2))
 
 
 def sort_cover_files(filenames: List[str]) -> List[str]:
-    """按（目录层级自然序 → 007 文件名分段）排序 zip 内图片，返回列表首项即默认封面"""
+    """按（目录层级自然序 → 文件名自然序）排序 zip 内图片，返回列表首项即默认封面"""
     return sorted(filenames, key=cmp_to_key(_custom_compare))
 
 

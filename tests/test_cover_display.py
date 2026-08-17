@@ -7,7 +7,8 @@ from pathlib import Path
 from PySide6.QtWidgets import QLabel, QPushButton
 
 from processors.cover_utils import (get_zip_cover_info, is_cover_ratio_ok,
-                                    read_cover_bytes, sort_volume_files)
+                                    read_cover_bytes, sort_cover_files,
+                                    sort_volume_files)
 
 
 def _make_png(width: int, height: int) -> bytes:
@@ -162,6 +163,22 @@ def test_sort_volume_files_natural_order():
     """卷名按自然序排序（Vol 10 排在 Vol 2 之后）"""
     names = ["Vol 10.cbz", "Vol 2.cbz", "Vol 1.cbz"]
     assert sort_volume_files(names) == ["Vol 1.cbz", "Vol 2.cbz", "Vol 10.cbz"]
+
+
+def test_sort_cover_files_mixed_number_letter_first():
+    """数字+字母混合名按自然序：'00a' 排 '004' 前（Komga 0.37+ 语义）"""
+    assert sort_cover_files(["004.jpg", "00a.jpg"]) == ["00a.jpg", "004.jpg"]
+
+
+def test_sort_cover_files_leading_zeros():
+    """前导零同数值时位数多者排前（'001' < '01' < '1'）"""
+    assert sort_cover_files(["1.jpg", "01.jpg", "001.jpg"]) == ["001.jpg", "01.jpg", "1.jpg"]
+
+
+def test_sort_cover_files_directory_natural_order():
+    """目录段保持自然序回归：C 01 < C 02 < C 10（防破坏 2026-08-14 目录排序修复）"""
+    files = ["Vol 01/C 10/x.jpg", "Vol 01/C 02/x.jpg", "Vol 01/C 01/x.jpg"]
+    assert [f.split("/")[1] for f in sort_cover_files(files)] == ["C 01", "C 02", "C 10"]
 
 
 def test_create_result_dict_from_xml_covers(tmp_path):
