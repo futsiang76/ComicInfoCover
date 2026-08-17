@@ -85,7 +85,8 @@ def _format_result_display(result: Dict) -> str:
 def show_result_selection_dialog(parent: QWidget, search_results: List[Dict],
                                     folder_info: Dict,
                                     alt_keywords: Optional[List[str]] = None,
-                                    allow_id_search: bool = True
+                                    allow_id_search: bool = True,
+                                    id_search_kind: str = "bangumi"
                                     ):
     """统一的结果选择对话框
 
@@ -99,7 +100,8 @@ def show_result_selection_dialog(parent: QWidget, search_results: List[Dict],
         search_results: Bangumi 搜索结果列表，每项含 id/name/name_cn/rating
         folder_info: 文件夹信息 (series, author, volume 等)
         alt_keywords: 备用关键词列表（无结果时显示）
-        allow_id_search: 是否显示「按Bangumi ID查找」按钮（manhuagui/ComicVine 模式传 False 隐藏）
+        allow_id_search: 是否显示「按ID查找」按钮（ComicVine 模式传 False 隐藏）
+        id_search_kind: ID 查找类型 'bangumi' | 'manhuagui'，决定按钮文字与输入逻辑
 
     Returns:
         Dict: 用户选择了某个结果 (含 id/name/name_cn/rating 等)
@@ -183,7 +185,9 @@ def show_result_selection_dialog(parent: QWidget, search_results: List[Dict],
     btn_layout.addStretch()
 
     select_btn = _make_button("✅ 选择此项", "#2196F3", "#0b7dda")
-    id_btn = _make_button("🔍 按Bangumi ID查找", "#9C27B0", "#7B1FA2")
+    id_label = ("🔍 按manhuagui ID查找" if id_search_kind == "manhuagui"
+                else "🔍 按Bangumi ID查找")
+    id_btn = _make_button(id_label, "#9C27B0", "#7B1FA2")
     if not allow_id_search:
         id_btn.setVisible(False)
     local_btn = _make_button("📋 仅用本地信息", "#FF9800", "#e68900")
@@ -220,6 +224,15 @@ def show_result_selection_dialog(parent: QWidget, search_results: List[Dict],
 
     def on_id_search():
         from PySide6.QtWidgets import QInputDialog
+        if id_search_kind == "manhuagui":
+            sid, ok = QInputDialog.getText(
+                dialog, "manhuagui ID",
+                f"请输入 manhuagui 漫画 ID（如 20635）：\n（当前系列: {folder_info.get('series', '')}）")
+            if ok and sid.strip():
+                # manhuagui 只输入漫画 ID，详情由工作线程 fetcher 抓取
+                dialog._result = {"id": sid.strip()}
+                dialog.accept()
+            return
         sid, ok = QInputDialog.getText(dialog, "Bangumi ID",
                                        f"请输入 Bangumi ID（如 378725）：\n（当前系列: {folder_info.get('series', '')}）")
         if ok and sid.strip():
@@ -257,25 +270,34 @@ def show_result_selection_dialog(parent: QWidget, search_results: List[Dict],
 def show_multi_result_dialog(parent: QWidget, search_results: List[Dict],
                               folder_info: Dict,
                               alt_keywords: Optional[List[str]] = None,
-                              allow_id_search: bool = True
+                              allow_id_search: bool = True,
+                              id_search_kind: str = "bangumi"
                               ) -> Optional[Dict]:
     """显示多结果选择对话框（兼容包装，委托给统一函数）
 
-    allow_id_search 透传给统一对话框（manhuagui/ComicVine 传 False 隐藏「按Bangumi ID查找」）。
+    allow_id_search 透传给统一对话框（ComicVine 传 False 隐藏「按ID查找」）。
+    id_search_kind 指定 ID 查找类型（bangumi/manhuagui），决定按钮文字与输入逻辑。
     """
     return show_result_selection_dialog(parent, search_results, folder_info,
-                                        alt_keywords, allow_id_search)
+                                        alt_keywords, allow_id_search,
+                                        id_search_kind)
 
 
 def show_no_result_dialog(parent: QWidget, folder_info: Dict,
                            alt_keywords: Optional[List[str]] = None,
-                           allow_id_search: bool = True
+                           allow_id_search: bool = True,
+                           id_search_kind: str = "bangumi"
                            ) -> dict:
-    """显示无搜索结果时的选项对话框（兼容包装，委托给统一函数）"""
+    """显示无搜索结果时的选项对话框（兼容包装，委托给统一函数）
+
+    id_search_kind 指定 ID 查找类型（bangumi/manhuagui）：dict 结果转换时
+    manhuagui → mhg_id_search（详情由工作线程抓取），bangumi → id_search。
+    """
     result = show_result_selection_dialog(parent, [], folder_info, alt_keywords,
-                                          allow_id_search)
+                                          allow_id_search, id_search_kind)
     if isinstance(result, dict):
-        return {'action': 'id_search', 'value': str(result.get('id', ''))}
+        action = 'mhg_id_search' if id_search_kind == "manhuagui" else 'id_search'
+        return {'action': action, 'value': str(result.get('id', ''))}
     elif result == 'use_local_info':
         return {'action': 'use_local_info', 'value': None}
     else:

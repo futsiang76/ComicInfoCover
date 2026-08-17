@@ -150,6 +150,10 @@ class BaseScanThread(QThread):
                     continue
                 if out[0] is RESULT_READY:
                     result = out[1]              # 结果已构建（如 XML 修改路径）
+                elif out[0] is None:
+                    # search_and_select 返回 (None, None)：无结果时用户跳过/取消
+                    skipped += 1
+                    continue
                 else:
                     comic_info_base, selected_result = out
                     comic_info_base["Manga"] = self.manga_value or comic_info_base.get("Manga", "Yes")

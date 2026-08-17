@@ -165,7 +165,8 @@ class TestManhuaguiAliasFallback:
                 dialog_results.append(results) or None))
         # search_failure → 直接跳过，避免进 GUI
         monkeypatch.setattr(manhuagui_scan, "show_no_result_dialog",
-                            lambda mw, folder_info, allow_id_search=False: None)
+                            lambda mw, folder_info, allow_id_search=False,
+                                   id_search_kind="bangumi": None)
 
         class FakeLog:
             def __init__(self):

@@ -64,6 +64,39 @@ def _build_from_bangumi_id(mw, value: str, folder_info: Dict, template_handler) 
     return built
 
 
+def _build_from_manhuagui_id(mw, value: str, folder_info: Dict, fetcher,
+                             template_handler) -> Tuple[Dict, Optional[Dict]]:
+    """manhuagui 无结果时按漫画 ID 直接抓详情构建 comic_info_base
+
+    Args:
+        mw: 主窗口或线程日志代理（写日志用）
+        value: manhuagui 漫画数字 ID 字符串
+        folder_info: 文件夹解析信息
+        fetcher: ManhuaguiFetcher 实例（工作线程持有，直接抓详情）
+        template_handler: XML 模板处理器
+
+    Returns:
+        (comic_info_base, selected_result)；ID 无效/未找到时回退本地信息
+    """
+    try:
+        comic_id = int(str(value).strip())
+    except (TypeError, ValueError):
+        mw.log_text.append("❌ 无效的 manhuagui ID，使用本地文件夹信息")
+        return template_handler.create_local_template(folder_info), None
+
+    url = f"https://www.manhuagui.com/comic/{comic_id}/"
+    detail = fetcher.get_manga_detail(url)
+    if not detail:
+        mw.log_text.append("❌ 未找到该 manhuagui ID 的作品，使用本地文件夹信息")
+        return template_handler.create_local_template(folder_info), None
+
+    comic_info_base = template_handler.create_base_template(folder_info)
+    comic_info_base.update(detail)
+    title = detail.get("Title") or folder_info["series"]
+    mw.log_text.append(f"🎯 获取到: {title}")
+    return comic_info_base, {"url": url, "title": detail.get("Title", "")}
+
+
 def _search_and_select_manhuagui(mw, folder_path: str, folder_info: Dict, fetcher,
                                  template_handler,
                                  gui_callback: Optional[Callable] = None) -> Tuple[Optional[Dict], Optional[Dict]]:
@@ -106,9 +139,12 @@ def _search_and_select_manhuagui(mw, folder_path: str, folder_info: Dict, fetche
     if not matching_results:
         mw.log_text.append("❌ manhuagui 未找到搜索结果")
         if gui_callback is not None:
-            action = gui_callback('search_failure', folder_info=folder_info, allow_id_search=False)
+            action = gui_callback('search_failure', folder_info=folder_info,
+                                  allow_id_search=True, id_search_kind="manhuagui")
         else:
-            action = show_no_result_dialog(mw, folder_info, allow_id_search=False)
+            action = show_no_result_dialog(mw, folder_info,
+                                           allow_id_search=True,
+                                           id_search_kind="manhuagui")
         if action is None:  # 线程停止/对话框被取消 → 跳过
             mw.log_text.append("⏭️ 跳过此系列")
             return None, None
@@ -117,6 +153,9 @@ def _search_and_select_manhuagui(mw, folder_path: str, folder_info: Dict, fetche
             return template_handler.create_local_template(folder_info), None
         if action.get("action") == "id_search":
             return _build_from_bangumi_id(mw, action.get("value", ""), folder_info, template_handler)
+        if action.get("action") == "mhg_id_search":
+            return _build_from_manhuagui_id(mw, action.get("value", ""),
+                                            folder_info, fetcher, template_handler)
         mw.log_text.append("⏭️ 跳过此系列")
         return None, None
 
