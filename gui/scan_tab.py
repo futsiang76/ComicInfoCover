@@ -148,7 +148,10 @@ def build_scan_tab(mw, tab_widget):
     mw.source_combo = QComboBox()
     # 配色对齐「漫画根目录」路径输入框（绿色主题）
     mw.source_combo.setStyleSheet("border: 2px solid #4CAF50; padding: 4px; font-size: 13px; background-color: #f0fff0;")
-    mw.source_combo.setMinimumWidth(140)
+    # 最小宽度 190 兜底最长项（Bangumi（大陆镜像）/ComicVine（欧美漫）），
+    # AdjustToContents 让宽度自动适配所有项的最大宽度，切源时宽度稳定
+    mw.source_combo.setMinimumWidth(190)
+    mw.source_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
     mw.source_combo.addItems([SOURCE_BANGUMI_TEXT, SOURCE_BANGUMI_MIRROR_TEXT,
                               SOURCE_COMICVINE_TEXT, SOURCE_MANHUAGUI_TEXT])
     mw.source_combo.setCurrentIndex(0)
