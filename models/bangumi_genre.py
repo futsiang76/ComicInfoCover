@@ -62,7 +62,8 @@ def _clean_name_for_alias(name: str) -> str:
     cleaned = _VOLUME_MARKER_RE.sub("", name)
     cleaned = _NAME_VOLUME_CLEAN_RE.sub("", cleaned)
     cleaned = re.sub(r"[（(]\s*[）)]", "", cleaned)  # 清理残留空括号
-    return cleaned.strip(" -_()（）")
+    cleaned = re.sub(r"[（(][^（）()]*[）)]", "", cleaned)  # 去掉丛书名等带内容括号段，只留主名
+    return cleaned.strip(" -_")
 
 
 def extract_bangumi_aliases(detail: Dict) -> List[str]:
@@ -107,6 +108,12 @@ def extract_bangumi_aliases(detail: Dict) -> List[str]:
         cleaned = _clean_name_for_alias(name)
         if cleaned:
             aliases.append(cleaned)
+        # 名字里带括号（如「白いパイロット（手塚治虫漫画全集）」）时，
+        # 括号内容（丛书名等有效文本）也作为独立别名；卷标括号(V01/第X卷等)跳过
+        for bracket in re.findall(r"[（(]([^（）()]*)[）)]", name):
+            b = bracket.strip()
+            if b and not _VOLUME_MARKER_RE.search(b):
+                aliases.append(b)
 
     # 去重保序 + 剔除纯数字/空串
     result = []
