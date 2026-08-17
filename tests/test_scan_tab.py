@@ -134,7 +134,7 @@ def test_source_constraint_comicvine(app):
     """ComicVine 源：同样固定全匹配 + 隐藏受限控件"""
     from gui.scan_tab import _on_source_changed
 
-    _on_source_changed(app, "ComicVine")
+    _on_source_changed(app, SOURCE_COMICVINE_TEXT)
     assert app._mode_radios[0].isChecked()
     for val in (1, 2, 3):
         assert not app._mode_radios[val].isVisible()
@@ -172,7 +172,7 @@ class TestGeoDetectDefaultSource:
     """IP 检测完成 → 默认数据源联动（测试不发起真实网络请求）"""
 
     def test_cn_detected_switches_to_mirror(self, app):
-        """检测大陆 → 默认切「Bangumi 大陆镜像」"""
+        """检测大陆 → 默认切「Bangumi（大陆镜像）」"""
         from gui import source_detect
 
         source_detect._on_geo_detected(app, True)

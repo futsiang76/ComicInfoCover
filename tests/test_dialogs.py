@@ -144,7 +144,7 @@ def test_xml_options_html_manhuagui():
 
 def test_xml_options_html_comicvine():
     """selected_source=ComicVine → 渲染文本含 ComicVine"""
-    html = _build_xml_options_html(_make_mw("ComicVine"))
+    html = _build_xml_options_html(_make_mw("ComicVine（欧美漫）"))
     assert "重新从ComicVine获取信息并生成新的XML文件" in html
     assert "不进行ComicVine搜索" in html
 

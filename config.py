@@ -198,8 +198,8 @@ BANGUMI_SOURCE_MIRROR = "bangumi_mirror"
 
 # 数据源下拉显示名（gui 下拉项 ↔ scan_controller 路由；manhuagui 排最后）
 SOURCE_BANGUMI_TEXT = "Bangumi（官方）"
-SOURCE_BANGUMI_MIRROR_TEXT = "Bangumi 大陆镜像"
-SOURCE_COMICVINE_TEXT = "ComicVine"
+SOURCE_BANGUMI_MIRROR_TEXT = "Bangumi（大陆镜像）"
+SOURCE_COMICVINE_TEXT = "ComicVine（欧美漫）"
 SOURCE_MANHUAGUI_TEXT = "manhuagui"
 
 # 保存格式 → 目标扩展名（None 表示保持原格式）
