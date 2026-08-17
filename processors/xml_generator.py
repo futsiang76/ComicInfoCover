@@ -213,6 +213,46 @@ def apply_volume_number(file_comic_info: Dict[str, Any], filename: str,
                 file_comic_info["Number"] = ""
 
 
+def build_file_comicinfo(result: Optional[Dict], filename: str, *,
+                         file_titles: Optional[Dict] = None,
+                         detail: Optional[Dict] = None,
+                         is_locked: bool = False) -> Dict[str, Any]:
+    """为单个漫画文件生成完整 ComicInfo 字典（系列字段 + per-file 字段）。
+
+    所有保存路径（save_thread 扫描保存 / xml_editor 编辑XML保存）共用此唯一入口，
+    per-file 字段写入逻辑集中一处，以后加 per-file 字段只改这里。
+    result 为系列字段来源（扫描结果 dict 或 EditDialog 的 get_data 返回），
+    file_titles/detail/is_locked 为 per-file 数据。
+    """
+    # 系列字段 + 默认值（Series/Writer/Count/Genre/Web 等由 build_full_comicinfo_dict 映射）
+    file_comic_info = build_full_comicinfo_dict(result)
+    result = result or {}
+    file_titles = file_titles or {}
+    detail = detail or {}
+    # Title：file_titles 优先（编辑XML 保留原 Title），否则按文件名生成 smart title
+    if file_titles.get(filename):
+        file_comic_info["Title"] = file_titles[filename]
+    else:
+        from parsers.file_parser import generate_smart_title
+        folder_info = {"series": result.get("series", ""),
+                       "complete": result.get("status") == "Completed"}
+        file_comic_info["Title"] = generate_smart_title(
+            filename, result.get("series", ""), folder_info)[0]
+    # Volume/Number：detail 或文件名解析
+    apply_volume_number(file_comic_info, filename, detail)
+    # 锁住的文件：detail 覆盖 year/month/summary
+    if is_locked:
+        if detail.get("year"):
+            file_comic_info["Year"] = detail["year"]
+        if detail.get("month"):
+            file_comic_info["Month"] = detail["month"]
+        if detail.get("summary"):
+            file_comic_info["Summary"] = detail["summary"]
+    # Notes 锁定标记
+    file_comic_info["Notes"] = "ComicScratcherLocked" if is_locked else ""
+    return file_comic_info
+
+
 def build_full_comicinfo_dict(result=None, **overrides) -> Dict[str, Any]:
     """构建完整的 ComicInfo 字典——所有写入路径共用此入口。
 

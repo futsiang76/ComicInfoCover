@@ -222,11 +222,10 @@ def create_result_dict_from_xml(folder_path: str, folder_info: Dict,
         for f, fsize in comic_files:
             file_path = os.path.join(folder_path, f)
             smart_title_result = generate_smart_title(f, folder_info.get("series", ""), folder_info)
-            file_titles[f] = smart_title_result[0]
-
             vol_info = parse_volume_from_filename(f)
-            # 尝试从当前文件读取XML，获取各自的元数据
             file_xml = read_xml_from_zip(file_path)
+            # Title 优先用原 XML 的 Title，回退 smart title（编辑XML 保留原 Title）
+            file_titles[f] = (file_xml.get("Title", "") if file_xml else "") or smart_title_result[0]
             if file_xml:
                 file_details[f] = {
                     "volume": file_xml.get("Volume", vol_info.get("number", "")),

@@ -43,7 +43,7 @@ class SaveThread(QThread):
         return total
 
     def run(self) -> None:
-        from processors.xml_generator import XMLGenerator, apply_volume_number, build_full_comicinfo_dict
+        from processors.xml_generator import XMLGenerator, build_file_comicinfo
         from processors.zip_handler import add_file_to_zip, check_zip_xml_files
 
         xml_generator = XMLGenerator()
@@ -58,8 +58,6 @@ class SaveThread(QThread):
             if not folder_path or not os.path.isdir(folder_path):
                 error_messages.append(f"文件夹不存在: {folder_path}")
                 continue
-
-            comic_info_base = build_full_comicinfo_dict(result)
 
             # 获取该系列的 file_titles、file_details 和 locked_files
             file_titles = result.get("file_titles", {})
@@ -78,36 +76,12 @@ class SaveThread(QThread):
                 self.progress_updated.emit(processed, total_files, filename)
 
                 try:
-                    # 复制基础数据用于此文件
-                    file_comic_info = comic_info_base.copy()
-
-                    # 如果 file_titles 中有该文件的 Title，使用它
-                    if filename in file_titles:
-                        file_comic_info["Title"] = file_titles[filename]
-                    else:
-                        # 否则用 generate_smart_title 生成
-                        from parsers.file_parser import generate_smart_title
-                        folder_info = {"series": result.get("series", ""), "complete": result.get("status") == "Completed"}
-                        smart_title_result = generate_smart_title(filename, result.get("series", ""), folder_info)
-                        file_comic_info["Title"] = smart_title_result[0]
-
-                    # 如果 file_details 中有该文件的信息，覆盖
+                    # per-file 字段统一入口（系列字段 + Title/Volume/Number/锁定字段/Notes）
                     detail = file_details.get(filename, {})
                     is_locked = filename in locked_files
-                    apply_volume_number(file_comic_info, filename, detail)
-
-                    # 锁住的文件：用 file_details 中的独立值覆盖系列级数据
-                    # 未锁住的文件：year/month/summary 跟随系列级数据
-                    if is_locked:
-                        if detail.get("year"):
-                            file_comic_info["Year"] = detail["year"]
-                        if detail.get("month"):
-                            file_comic_info["Month"] = detail["month"]
-                        if detail.get("summary"):
-                            file_comic_info["Summary"] = detail["summary"]
-
-                    # 写入锁定标记到 Notes 字段
-                    file_comic_info["Notes"] = "ComicScratcherLocked" if is_locked else ""
+                    file_comic_info = build_file_comicinfo(
+                        result, filename,
+                        file_titles=file_titles, detail=detail, is_locked=is_locked)
 
                     # 生成XML
                     xml_content = xml_generator.generate_comicinfo_xml(file_comic_info)
