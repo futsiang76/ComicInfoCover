@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
@@ -345,29 +346,40 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
             
             # 使用7-Zip的stdin功能直接从临时文件添加，避免在目标文件夹创建文件
             # 这样可以减少对目标硬盘的读写操作
-            if os.name == 'nt':  # Windows系统
-                # 使用7-Zip的-si参数从stdin读取数据
-                with open(temp_file_path, 'rb') as xml_file:
-                    result = subprocess.run(
-                        ['cmd', '/c', seven_zip_path, 'a', '-mm=copy', '-y', '-si' + file_name, zip_path],
-                        stdin=xml_file,
-                        capture_output=True,
-                        text=True,
-                        encoding='utf-8',
-                        errors='replace'
-                    )
-            else:  # Unix-like系统
-                # 对于Unix系统，使用类似的方法
-                with open(temp_file_path, 'rb') as xml_file:
-                    result = subprocess.run(
-                        [seven_zip_path, 'a', '-mm=copy', '-y', '-si' + file_name, zip_path],
-                        stdin=xml_file,
-                        capture_output=True,
-                        text=True,
-                        encoding='utf-8',
-                        errors='replace'
-                    )
-            
+            # 7z.exe 退出有延迟可能短暂占用 zip 文件，失败后递增等待重试即可恢复
+            MAX_RETRIES = 3
+            result = None
+            for attempt in range(1, MAX_RETRIES + 1):
+                if os.name == 'nt':  # Windows系统
+                    # 使用7-Zip的-si参数从stdin读取数据
+                    # 每次尝试都要重新打开文件（stdin读取会消耗文件指针，不能复用同一句柄）
+                    with open(temp_file_path, 'rb') as xml_file:
+                        result = subprocess.run(
+                            ['cmd', '/c', seven_zip_path, 'a', '-mm=copy', '-y', '-si' + file_name, zip_path],
+                            stdin=xml_file,
+                            capture_output=True,
+                            text=True,
+                            encoding='utf-8',
+                            errors='replace'
+                        )
+                else:  # Unix-like系统
+                    # 对于Unix系统，使用类似的方法
+                    with open(temp_file_path, 'rb') as xml_file:
+                        result = subprocess.run(
+                            [seven_zip_path, 'a', '-mm=copy', '-y', '-si' + file_name, zip_path],
+                            stdin=xml_file,
+                            capture_output=True,
+                            text=True,
+                            encoding='utf-8',
+                            errors='replace'
+                        )
+
+                if result.returncode == 0:
+                    break
+                if attempt < MAX_RETRIES:
+                    print(f"⚠️  7-Zip命令执行失败，第{attempt}次重试: {result.stderr.strip()}")
+                    time.sleep(0.5 * attempt)  # 递增等待，让 7z.exe 释放句柄
+
             if result.returncode == 0:
                 if target_exists or other_xml_files:
                     print(f"✅ 使用7-Zip成功更新文件: {file_name}")
@@ -375,7 +387,7 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
                     print(f"✅ 使用7-Zip成功添加文件: {file_name}")
                 return True
             else:
-                print(f"⚠️  7-Zip命令执行失败: {result.stderr.strip()}")
+                print(f"⚠️  7-Zip命令执行失败(重试{MAX_RETRIES}次): {result.stderr.strip()}")
                 # 尝试通用归档格式处理
                 print("🔄 尝试通用归档格式处理...")
                 return _fallback_write(zip_path, file_content, file_name,

@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
@@ -83,7 +84,17 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str, xml_exis
         temp_zip_path = os.path.join(temp_dir, f"temp_{os.path.basename(zip_path)}")
         
         # 复制原始zip文件到临时文件
-        shutil.copy2(zip_path, temp_zip_path)
+        # 7z.exe 退出延迟可能短暂占用文件，复制失败时递增等待重试
+        max_copy_retries = 3
+        for attempt in range(1, max_copy_retries + 1):
+            try:
+                shutil.copy2(zip_path, temp_zip_path)
+                break
+            except OSError:
+                if attempt < max_copy_retries:
+                    time.sleep(0.5 * attempt)  # 递增等待，让 7z.exe 释放句柄
+                else:
+                    raise  # 最后一次失败向上抛，走现有 except 打印「回退方法失败」
         
         # 读取原始文件内容
         with zipfile.ZipFile(temp_zip_path, 'r') as zf:
