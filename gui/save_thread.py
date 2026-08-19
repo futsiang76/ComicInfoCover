@@ -87,13 +87,14 @@ class SaveThread(QThread):
                     xml_content = xml_generator.generate_comicinfo_xml(file_comic_info)
 
                     # 先检查ZIP中已有XML是否与新生成的一致
-                    target_exists, content_matches, _ = check_zip_xml_files(file_path, xml_content)
+                    target_exists, content_matches, other_xml_files = check_zip_xml_files(file_path, xml_content)
                     if target_exists and content_matches:
                         success_files += 1
                         continue
 
-                    # 内容不一致或不存在，写入ZIP文件
-                    write_result = add_file_to_zip(file_path, xml_content)
+                    # 内容不一致或不存在，写入ZIP文件（复用已 check 结果，避免二次 check 重复打印差异日志）
+                    write_result = add_file_to_zip(file_path, xml_content,
+                                                   prechecked=(target_exists, content_matches, other_xml_files))
                     if write_result:
                         success_files += 1
                     else:

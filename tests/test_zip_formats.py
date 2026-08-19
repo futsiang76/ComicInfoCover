@@ -182,3 +182,56 @@ def test_archive_check_xml_mismatch_direct(seven_zip_archive_with_xml):
     exists, matches, other = check_zip_xml_files(seven_zip_archive_with_xml, different_xml)
     assert exists is True
     assert matches is False
+
+
+# ---------- prechecked 复用（save_thread 避免二次 check 重复打印字段日志） ----------
+
+def test_add_file_to_zip_prechecked_skips_recheck(cbz_file, monkeypatch, capsys):
+    """prechecked 传入时 add_file_to_zip 复用调用方 check 结果，不再二次 check
+
+    复现 save_thread 场景：先 check_zip_xml_files 发现内容不一致
+    （_compare_xml_content 打印一次「字段 修改/删除」日志），再调
+    add_file_to_zip —— 传 prechecked 后内部应跳过 check，比较次数不变、
+    字段差异日志只出现一次；不传 prechecked 时内部仍会自行 check（对照）。
+    """
+    import config
+    import processors.zip_operations as zo
+
+    # 固定 keep 模式，确保走原地写路径（不触发格式转换分支）
+    monkeypatch.setattr(config, "SAVE_FORMAT", "keep")
+
+    # 先写入 SAMPLE_XML，让目标 XML 存在
+    assert add_file_to_zip(cbz_file, SAMPLE_XML)
+
+    # 构造内容不一致的 XML（Title 变化 → 触发字段差异日志）
+    different_xml = SAMPLE_XML.replace("<Title>测试漫画</Title>",
+                                       "<Title>另一本</Title>")
+
+    # 统计 _compare_xml_content 调用次数
+    real_compare = zo._compare_xml_content
+    compare_calls = {"n": 0}
+
+    def counting_compare(existing_xml, new_xml):
+        compare_calls["n"] += 1
+        return real_compare(existing_xml, new_xml)
+
+    monkeypatch.setattr(zo, "_compare_xml_content", counting_compare)
+
+    # 模拟 save_thread：先 check 一次（1 次比较 + 1 条字段日志）
+    target_exists, content_matches, other_xml_files = check_zip_xml_files(cbz_file, different_xml)
+    assert target_exists is True
+    assert content_matches is False
+    first_calls = compare_calls["n"]
+    assert first_calls == 1
+
+    # prechecked 复用：add_file_to_zip 内部不再 check → 比较次数与字段日志均不增加
+    assert add_file_to_zip(cbz_file, different_xml,
+                           prechecked=(target_exists, content_matches, other_xml_files))
+    assert compare_calls["n"] == first_calls
+    assert str(capsys.readouterr().out).count("📋 字段") == 1
+
+    # 对照：不传 prechecked 时内部仍自行 check（比较次数 +1，字段日志再打一条）
+    before = compare_calls["n"]
+    assert add_file_to_zip(cbz_file, SAMPLE_XML)
+    assert compare_calls["n"] == before + 1
+    assert str(capsys.readouterr().out).count("📋 字段") == 1

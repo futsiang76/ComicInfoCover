@@ -213,7 +213,8 @@ def _fallback_write(zip_path: str, file_content: str, file_name: str,
 
 
 def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInfo.xml',
-                    target_ext: Optional[str] = None) -> bool:
+                    target_ext: Optional[str] = None,
+                    prechecked: Optional[Tuple[bool, bool, List[str]]] = None) -> bool:
     """向 ZIP/CBZ/CBR/RAR/7Z 文件添加或更新文件
 
     保存格式由 config.SAVE_FORMAT 决定（keep/cbz/zip/cb7），也可通过
@@ -229,6 +230,9 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
         file_content: 待写入的 XML 内容
         file_name: 文件名（默认 ComicInfo.xml）
         target_ext: 显式指定目标扩展名（'.cbz'/'.zip'/'.cb7'/None 按设置）
+        prechecked: 调用方已 check 过的结果 (target_exists, content_matches,
+            other_xml_files)；传入则跳过内部 check_zip_xml_files 二次检查，
+            避免「字段删除」等差异日志重复打印。None 时保持原行为（自行检查）。
 
     Returns:
         bool: 是否成功
@@ -257,16 +261,20 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
                                           keep_original=keep_original)
 
         # 目标扩展名与当前一致（或 keep 模式 zip/cbz）：原地写，保留扩展名
-        # 尝试检查文件中的XML文件情况
-        try:
-            target_exists, content_matches, other_xml_files = check_zip_xml_files(zip_path, file_content, file_name)
-        except Exception as e:
-            print(f"⚠️  检查文件失败，可能是RAR格式: {str(e)[:50]}")
-            # 假设文件是归档格式，需要特殊处理
-            return _fallback_write(zip_path, file_content, file_name,
-                                   target_exists=False,
-                                   target_ext=target_ext,
-                                   keep_original=keep_original)
+        # 检查文件中的XML文件情况：prechecked 已由调用方 check 过则直接复用，
+        # 避免二次 check 导致「字段删除」等差异日志重复打印
+        if prechecked is not None:
+            target_exists, content_matches, other_xml_files = prechecked
+        else:
+            try:
+                target_exists, content_matches, other_xml_files = check_zip_xml_files(zip_path, file_content, file_name)
+            except Exception as e:
+                print(f"⚠️  检查文件失败，可能是RAR格式: {str(e)[:50]}")
+                # 假设文件是归档格式，需要特殊处理
+                return _fallback_write(zip_path, file_content, file_name,
+                                       target_exists=False,
+                                       target_ext=target_ext,
+                                       keep_original=keep_original)
         
         # 导入配置
         from config import MODE_SKIP_XMLEXIST
