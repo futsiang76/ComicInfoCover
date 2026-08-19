@@ -79,3 +79,36 @@ def test_add_with_zipfile_streams_one_entry_at_a_time(monkeypatch, tmp_path):
         f"img{i:03d}.jpg" for i in range(n)]
     assert events[2 * n] == ("write", "ComicInfo.xml")  # 源 XML 从未读入，新 XML 末位写入
     assert all(k == "read" for k, _ in events[0::2][:n])  # 读操作各条目恰好一次
+
+
+def test_add_with_zipfile_temp_same_dir_as_target(monkeypatch, tmp_path):
+    """临时文件与目标 zip 同目录：os.replace 同盘移动，不落到系统临时目录(C盘)"""
+    import os as _os
+
+    path = _make_deflate_zip(
+        tmp_path / "same_dir.zip",
+        {"001.jpg": os.urandom(32 * 1024)})
+
+    replaces = []
+    real_replace = _os.replace
+
+    def tracked_replace(src, dst):
+        replaces.append((src, dst))
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(_os, "replace", tracked_replace)
+
+    ok = zip_operations._add_with_zipfile(
+        path, "<ComicInfo><Title>新</Title></ComicInfo>", "ComicInfo.xml")
+
+    assert ok is True
+    # 发生了同目录原子替换：src(临时文件) 与 dst(目标 zip) 同目录 → 同盘 move
+    assert len(replaces) == 1
+    src, dst = replaces[0]
+    assert _os.path.dirname(src) == _os.path.dirname(dst)
+    # 临时文件为隐藏唯一名：. {safe_base} . {hex8} .tmp
+    assert _os.path.basename(src) == ".same_dir.zip." + src.split(".")[-2] + ".tmp"
+    assert src != dst
+    # 成功后目标目录不残留任何临时文件（只剩 zip 本身）
+    remaining = [f for f in _os.listdir(tmp_path)]
+    assert remaining == ["same_dir.zip"]

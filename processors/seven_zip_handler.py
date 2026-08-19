@@ -91,11 +91,12 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str,
     files_to_delete = set(files_to_delete or [])
 
     try:
-        # 在系统临时目录创建唯一临时文件（uuid 避免多实例/同名冲突）
-        temp_dir = tempfile.gettempdir()
+        # 在目标 zip 同目录创建唯一隐藏临时文件（uuid 避免多实例/同名冲突）。
+        # 必须与目标 zip 同盘，保证 os.replace 同盘原子替换：系统临时目录在 C 盘、
+        # 目标 zip 在其它盘会触发 MoveFileEx 跨盘 rename → WinError 17。
         safe_base = re.sub(r'[<>:"/\\|?*]', '_', os.path.basename(zip_path))
         temp_zip_path = os.path.join(
-            temp_dir, f"temp_{uuid.uuid4().hex[:8]}_{safe_base}")
+            os.path.dirname(zip_path), f".{safe_base}.{uuid.uuid4().hex[:8]}.tmp")
 
         # 源文件可能被其它进程（如并行会话）短暂占用，打开失败时递增等待重试
         max_open_retries = 3
@@ -146,7 +147,7 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str,
         return True
     except Exception as e:
         print(f"🔴 回退方法失败: {str(e)[:50]}")
-        # 失败清理系统临时目录的临时文件
+        # 失败清理与目标文件同目录的临时文件
         if 'temp_zip_path' in locals() and os.path.exists(temp_zip_path):
             try:
                 os.unlink(temp_zip_path)
