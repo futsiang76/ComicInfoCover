@@ -22,6 +22,16 @@ def _scan_running(mw) -> bool:
 
 
 def save_changes(mw, show_result: bool = True):
+    # 互斥：已有保存线程在跑时拦截重复触发（用户连点「保存」会启动多个
+    # SaveThread 并发写同一批 zip → 互相锁文件 WinError 5 + 多份相同 tmp）。
+    # 仅拦用户手动路径：扫描进行中的逐系列保存由扫描流程负责（全匹配模式
+    # 每个系列确认后立即写盘防崩溃丢结果），扫描中跳过互斥避免误伤。
+    if not _scan_running(mw) and any(
+        t.isRunning() for t in getattr(mw, "_save_threads", [])
+    ):
+        QMessageBox.information(mw, "提示", "正在保存中，请稍候")
+        return
+
     modified_results = [r for r in mw.scan_results if r.get("process_status") == "已修改"]
 
     if not modified_results:
