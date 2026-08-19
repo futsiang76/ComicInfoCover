@@ -117,31 +117,13 @@ def process_normal_folder(folder_path: str, folder_info: Dict, fetcher, depth: i
             else:
                 print(f"{'  ' * depth}❌ 别名 '{alt_keyword}' 未找到结果")
     
-    if not has_author_match:
-        # 所有搜索都未找到作者匹配，进入搜索失败流程
-        
-        # 无人值守模式：作者匹配失败时直接跳过
-        from config import AUTO_TURBO_MATCH
-        if AUTO_TURBO_MATCH == 1:
-            print(f"{'  ' * depth}🚀 无人值守模式：作者匹配失败，跳过此系列")
-            return {
-                "comic_info_base": None,
-                "selected_result": None,
-                "skip_files": True
-            }
-        
-        print(f"{'  ' * depth}❌ 在所有搜索结果中未找到作者 '{folder_info['author']}' 的匹配作品")
-        
-        # GUI 模式：使用回调获取用户选择
-        if gui_callback:
-            return _handle_search_failure_gui(folder_info, alt_keywords, fetcher,
-                                              template_handler, search_handler,
-                                              gui_callback, depth)
-        
-        return match_failure_handler.handle_no_author_match(folder_info, alt_keywords, depth)
+    # 4. 过滤匹配结果（作者匹配才做作者过滤，否则直接走放宽）
+    if has_author_match:
+        matching_results = search_handler.filter_matching_results(search_results, folder_info, AUTHOR_MATCH_THRESHOLD)
+    else:
+        # 作者不匹配：不走作者过滤，交给下方放宽逻辑
+        matching_results = []
     
-    # 4. 过滤匹配结果
-    matching_results = search_handler.filter_matching_results(search_results, folder_info, AUTHOR_MATCH_THRESHOLD)
     # 作者过滤 0 结果但搜索有结果：放宽为系列名匹配前5个（漫画系列优先）
     if not matching_results and search_results:
         from models.author_utils import relax_author_filter
