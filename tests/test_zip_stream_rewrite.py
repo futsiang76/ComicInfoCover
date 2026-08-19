@@ -81,12 +81,12 @@ def test_add_with_zipfile_streams_one_entry_at_a_time(monkeypatch, tmp_path):
     assert all(k == "read" for k, _ in events[0::2][:n])  # 读操作各条目恰好一次
 
 
-def test_add_with_zipfile_temp_same_dir_as_target(monkeypatch, tmp_path):
-    """临时文件与目标 zip 同目录：os.replace 同盘移动，不落到系统临时目录(C盘)"""
+def test_add_with_zipfile_temp_in_drive_root_tmpdir(monkeypatch, tmp_path):
+    """临时文件放目标盘根 .comicscratch_tmp：os.replace 同盘 move，不进手同步目录"""
     import os as _os
 
     path = _make_deflate_zip(
-        tmp_path / "same_dir.zip",
+        tmp_path / "drive_root.zip",
         {"001.jpg": os.urandom(32 * 1024)})
 
     replaces = []
@@ -102,13 +102,14 @@ def test_add_with_zipfile_temp_same_dir_as_target(monkeypatch, tmp_path):
         path, "<ComicInfo><Title>新</Title></ComicInfo>", "ComicInfo.xml")
 
     assert ok is True
-    # 发生了同目录原子替换：src(临时文件) 与 dst(目标 zip) 同目录 → 同盘 move
     assert len(replaces) == 1
     src, dst = replaces[0]
-    assert _os.path.dirname(src) == _os.path.dirname(dst)
-    # 临时文件为隐藏唯一名：. {safe_base} . {hex8} .tmp
-    assert _os.path.basename(src) == ".same_dir.zip." + src.split(".")[-2] + ".tmp"
+    # 临时文件在目标盘根 .comicscratch_tmp 目录下（uuid.tmp，非目标同目录）
+    drive, _ = _os.path.splitdrive(_os.path.abspath(dst))
+    expected_dir = _os.path.join(drive + _os.sep, ".comicscratch_tmp")
+    assert _os.path.dirname(src) == expected_dir
+    assert _os.path.basename(src).endswith(".tmp")
     assert src != dst
     # 成功后目标目录不残留任何临时文件（只剩 zip 本身）
     remaining = [f for f in _os.listdir(tmp_path)]
-    assert remaining == ["same_dir.zip"]
+    assert remaining == ["drive_root.zip"]

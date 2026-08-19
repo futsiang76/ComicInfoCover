@@ -91,12 +91,20 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str,
     files_to_delete = set(files_to_delete or [])
 
     try:
-        # 在目标 zip 同目录创建唯一隐藏临时文件（uuid 避免多实例/同名冲突）。
-        # 必须与目标 zip 同盘，保证 os.replace 同盘原子替换：系统临时目录在 C 盘、
+        # 临时文件放「目标盘根下独立 .comicscratch_tmp 目录」（与目标 zip 同盘），
+        # 避免用户在手同步目录(网盘/Syncthing)开着同步时把临时文件同步出去。
+        # 与目标同盘保证 os.replace 同盘原子替换：系统临时目录在 C 盘、
         # 目标 zip 在其它盘会触发 MoveFileEx 跨盘 rename → WinError 17。
-        safe_base = re.sub(r'[<>:"/\\|?*]', '_', os.path.basename(zip_path))
-        temp_zip_path = os.path.join(
-            os.path.dirname(zip_path), f".{safe_base}.{uuid.uuid4().hex[:8]}.tmp")
+        safe_base = re.sub(r'[<>:"/\|?*]', '_', os.path.basename(zip_path))
+        drive, _ = os.path.splitdrive(zip_path)
+        temp_dir = os.path.join(drive + os.sep, ".comicscratch_tmp")
+        try:
+            os.makedirs(temp_dir, exist_ok=True)
+            temp_zip_path = os.path.join(temp_dir, f"{uuid.uuid4().hex[:8]}.tmp")
+        except OSError:
+            # 建盘根 temp 目录失败（只读盘根等）回退到目标 zip 同目录
+            temp_zip_path = os.path.join(
+                os.path.dirname(zip_path), f".{safe_base}.{uuid.uuid4().hex[:8]}.tmp")
 
         # 源文件可能被其它进程（如并行会话）短暂占用，打开失败时递增等待重试
         max_open_retries = 3
