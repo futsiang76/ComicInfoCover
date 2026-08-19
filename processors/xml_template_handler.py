@@ -158,31 +158,24 @@ class XMLTemplateHandler:
         """
         template = self.create_base_template(folder_info)
         
-        # 处理多作者情况
+        # 处理多作者情况（复用 author_utils._split_authors 统一拆分入口）
+        from models.author_utils import _split_authors
         author = folder_info["author"]
-        authors = []
-        if "×" in author:
-            authors = [a.strip() for a in author.split("×")]
-        elif "&" in author:
-            authors = [a.strip() for a in author.split("&")]
-        elif "/" in author:
-            authors = [a.strip() for a in author.split("/")]
-        else:
-            authors = [author.strip()]
-        
-            # 当不确定作者角色时，将所有作者都放在Writer和Penciller字段中
-            all_authors = ", ".join(authors)
+        authors = _split_authors(author) or [author.strip()]
 
-            # 使用文件夹信息填充（Tags 沿用 create_base_template 的结果，短篇保留"短篇"）
-            template.update({
-                "Title": folder_info["series"],
-                "Series": folder_info["series"],
-                "Writer": all_authors,  # Writer字段包含所有作者
-                "Penciller": all_authors,  # Penciller字段也包含所有作者
-                "Summary": "",
-                "Web": "",
-                "Rating": ""
-            })
+        # 当不确定作者角色时，将所有作者都放在Writer和Penciller字段中
+        all_authors = ", ".join(authors)
+        
+        # 使用文件夹信息填充（Tags 沿用 create_base_template 的结果，短篇保留"短篇"）
+        template.update({
+            "Title": folder_info["series"],
+            "Series": folder_info["series"],
+            "Writer": all_authors,  # Writer字段包含所有作者
+            "Penciller": all_authors,  # Penciller字段也包含所有作者
+            "Summary": "",
+            "Web": "",
+            "Rating": ""
+        })
         
         return template
     
