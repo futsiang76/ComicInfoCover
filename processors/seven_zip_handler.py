@@ -15,11 +15,12 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
+from contextlib import ExitStack
 from typing import Any, Dict, List, Optional, Tuple
 
 from parsers.file_parser import (generate_smart_title,
                                  parse_volume_from_filename)
-from processors.utils import file_tag, thread_tag
+from processors.utils import file_tag, thread_tag, zip_lock, zip_lock_multi
 from processors.xml_generator import XMLGenerator
 
 def _check_seven_zip_available() -> str:
@@ -91,7 +92,15 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str,
 
     files_to_delete = set(files_to_delete or [])
 
+    # 文件级互斥锁（多实例安全）：写盘开始前对目标 zip 加锁，流式重写 + CRC
+    # 校验 + os.replace 全部成功后 finally 才释放（任何一步失败也 finally 释放，
+    # 绝不提前放锁让另一实例读到半成品）；同一 zip 另一实例正写时等待最多
+    # 120s（大卷写盘 SSD 30s+/HDD 1-2 分钟，宁可多等不误跳过），超时才失败。
+    # 不同 zip 锁文件不同，互不阻塞。
+    lock_stack = ExitStack()
     try:
+        if not lock_stack.enter_context(zip_lock(zip_path)):
+            return False
         # 临时文件放「目标盘根下独立 .comicscratch_tmp 目录」（与目标 zip 同盘），
         # 避免用户在手同步目录(网盘/Syncthing)开着同步时把临时文件同步出去。
         # 与目标同盘保证 os.replace 同盘原子替换：系统临时目录在 C 盘、
@@ -178,6 +187,9 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str,
             except Exception:
                 pass
         return False
+    finally:
+        # 成功/失败路径都释放文件锁（zip_lock 在 with 退出时删除锁文件）
+        lock_stack.close()
 
 
 def _convert_zip_container(zip_path: str, file_content: str, file_name: str,
@@ -202,6 +214,11 @@ def _convert_zip_container(zip_path: str, file_content: str, file_name: str,
 
     base_name = os.path.splitext(zip_path)[0]
     new_path = base_name + target_ext
+    # 转换同时碰源文件（读+可能删）与目标文件（写）：对两者统一加文件级互斥锁，
+    # 与 _add_with_zipfile 同一把锁，避免与另一实例的原地写并发
+    lock_stack = zip_lock_multi([zip_path, new_path])
+    if lock_stack is None:
+        return False
     try:
         # 读出源文件全部条目（目标 XML 由新文件覆盖写入）
         with zipfile.ZipFile(zip_path, 'r') as zf:
@@ -213,6 +230,7 @@ def _convert_zip_container(zip_path: str, file_content: str, file_name: str,
             zf.writestr(file_name, file_content.encode('utf-8'))
     except (zipfile.BadZipFile, OSError) as e:
         print(f"{thread_tag()} 🔴 ZIP 容器转换失败 {file_tag(zip_path)}: {str(e)[:100]}")
+        lock_stack.close()
         return False
 
     if not keep_original and os.path.abspath(new_path) != os.path.abspath(zip_path):
@@ -222,6 +240,7 @@ def _convert_zip_container(zip_path: str, file_content: str, file_name: str,
         except OSError as e:
             print(f"{thread_tag()} ⚠️   删除原始文件失败 {file_tag(zip_path)}: {str(e)[:100]}")
     print(f"{thread_tag()} ✅ 成功转换并添加文件 {file_tag(zip_path)}: {file_name}")
+    lock_stack.close()
     return True
 
 
@@ -241,7 +260,14 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
     """
     import re
     import shutil
-    
+
+    # 归档转换同时碰源文件（读+可能删）与目标文件（写）：对两者统一加文件级
+    # 互斥锁（同一把锁 helper），避免与另一实例对同一文件的并发写
+    new_zip_path = os.path.splitext(zip_path)[0] + target_ext
+    lock_stack = zip_lock_multi([zip_path, new_zip_path])
+    if lock_stack is None:
+        return False
+
     try:
         # 检查7-Zip是否可用
         seven_zip_path = _check_seven_zip_available()
@@ -323,10 +349,6 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
             print(f"{thread_tag()} 🔴 所有压缩方法都失败 {file_tag(zip_path)}")
             return False
         
-        # 替换原始文件，扩展名改为目标格式
-        base_name = os.path.splitext(zip_path)[0]  # 去掉原扩展名
-        new_zip_path = base_name + target_ext
-
         # 复制临时文件到新位置
         shutil.copy2(temp_zip_path, new_zip_path)
 
@@ -362,6 +384,10 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
             except:
                 pass
         return False
+    finally:
+        # 成功/失败路径都释放文件锁
+        lock_stack.close()
+
 
 def _run_seven_zip(seven_zip_path: str, args: list) -> subprocess.CompletedProcess:
     """运行7-Zip命令

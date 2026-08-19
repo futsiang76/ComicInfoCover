@@ -15,12 +15,13 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
+from contextlib import ExitStack
 from typing import Any, Dict, List, Optional, Tuple
 
 import config
 from parsers.file_parser import (generate_smart_title,
                                  parse_volume_from_filename)
-from processors.utils import file_tag, thread_tag
+from processors.utils import file_tag, thread_tag, zip_lock
 from processors.xml_generator import XMLGenerator
 
 def _compare_xml_content(existing_xml: str, new_xml: str) -> bool:
@@ -340,80 +341,88 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
         seven_zip_path = _check_seven_zip_available()
         
         if seven_zip_path:
-            # 如果有需要删除的文件，先删除它们
-            if 'files_to_delete' in locals() and files_to_delete:
-                # 使用7-Zip删除其它XML文件
-                for xml_file in files_to_delete:
+            # 7z 原地写（删 XML + a -si）也持文件级互斥锁（与 _add_with_zipfile
+            # 同一把锁），避免与另一实例的 zipfile 流式重写/7z 更新并发写同一文件
+            lock_stack = ExitStack()
+            try:
+                if not lock_stack.enter_context(zip_lock(zip_path)):
+                    return False
+                # 如果有需要删除的文件，先删除它们
+                if 'files_to_delete' in locals() and files_to_delete:
+                    # 使用7-Zip删除其它XML文件
+                    for xml_file in files_to_delete:
+                        if os.name == 'nt':  # Windows系统
+                            delete_result = subprocess.run(
+                                ['cmd', '/c', seven_zip_path, 'd', '-y', zip_path, xml_file],
+                                capture_output=True,
+                                text=True,
+                                encoding='utf-8',
+                                errors='replace'
+                            )
+                        else:  # Unix-like系统
+                            delete_result = subprocess.run(
+                                [seven_zip_path, 'd', '-y', zip_path, xml_file],
+                                capture_output=True,
+                                text=True
+                            )
+
+                        if delete_result.returncode == 0:
+                            print(f"{thread_tag()} ✅ 使用7-Zip成功删除文件 {file_tag(zip_path)}: {xml_file}")
+                        else:
+                            print(f"{thread_tag()} ⚠️  删除文件失败 {file_tag(zip_path)}: {xml_file}")
+
+                # 使用7-Zip的stdin功能直接从临时文件添加，避免在目标文件夹创建文件
+                # 这样可以减少对目标硬盘的读写操作
+                # 7z.exe 退出有延迟可能短暂占用 zip 文件，失败后递增等待重试即可恢复
+                MAX_RETRIES = 3
+                result = None
+                for attempt in range(1, MAX_RETRIES + 1):
                     if os.name == 'nt':  # Windows系统
-                        delete_result = subprocess.run(
-                            ['cmd', '/c', seven_zip_path, 'd', '-y', zip_path, xml_file],
-                            capture_output=True,
-                            text=True,
-                            encoding='utf-8',
-                            errors='replace'
-                        )
+                        # 使用7-Zip的-si参数从stdin读取数据
+                        # 每次尝试都要重新打开文件（stdin读取会消耗文件指针，不能复用同一句柄）
+                        with open(temp_file_path, 'rb') as xml_file:
+                            result = subprocess.run(
+                                ['cmd', '/c', seven_zip_path, 'a', '-mm=copy', '-y', '-si' + file_name, zip_path],
+                                stdin=xml_file,
+                                capture_output=True,
+                                text=True,
+                                encoding='utf-8',
+                                errors='replace'
+                            )
                     else:  # Unix-like系统
-                        delete_result = subprocess.run(
-                            [seven_zip_path, 'd', '-y', zip_path, xml_file],
-                            capture_output=True,
-                            text=True
-                        )
-                    
-                    if delete_result.returncode == 0:
-                        print(f"{thread_tag()} ✅ 使用7-Zip成功删除文件 {file_tag(zip_path)}: {xml_file}")
-                    else:
-                        print(f"{thread_tag()} ⚠️  删除文件失败 {file_tag(zip_path)}: {xml_file}")
-            
-            # 使用7-Zip的stdin功能直接从临时文件添加，避免在目标文件夹创建文件
-            # 这样可以减少对目标硬盘的读写操作
-            # 7z.exe 退出有延迟可能短暂占用 zip 文件，失败后递增等待重试即可恢复
-            MAX_RETRIES = 3
-            result = None
-            for attempt in range(1, MAX_RETRIES + 1):
-                if os.name == 'nt':  # Windows系统
-                    # 使用7-Zip的-si参数从stdin读取数据
-                    # 每次尝试都要重新打开文件（stdin读取会消耗文件指针，不能复用同一句柄）
-                    with open(temp_file_path, 'rb') as xml_file:
-                        result = subprocess.run(
-                            ['cmd', '/c', seven_zip_path, 'a', '-mm=copy', '-y', '-si' + file_name, zip_path],
-                            stdin=xml_file,
-                            capture_output=True,
-                            text=True,
-                            encoding='utf-8',
-                            errors='replace'
-                        )
-                else:  # Unix-like系统
-                    # 对于Unix系统，使用类似的方法
-                    with open(temp_file_path, 'rb') as xml_file:
-                        result = subprocess.run(
-                            [seven_zip_path, 'a', '-mm=copy', '-y', '-si' + file_name, zip_path],
-                            stdin=xml_file,
-                            capture_output=True,
-                            text=True,
-                            encoding='utf-8',
-                            errors='replace'
-                        )
+                        # 对于Unix系统，使用类似的方法
+                        with open(temp_file_path, 'rb') as xml_file:
+                            result = subprocess.run(
+                                [seven_zip_path, 'a', '-mm=copy', '-y', '-si' + file_name, zip_path],
+                                stdin=xml_file,
+                                capture_output=True,
+                                text=True,
+                                encoding='utf-8',
+                                errors='replace'
+                            )
+
+                    if result.returncode == 0:
+                        break
+                    if attempt < MAX_RETRIES:
+                        print(f"{thread_tag()} ⚠️  7-Zip命令执行失败 {file_tag(zip_path)}，第{attempt}次重试: {result.stderr.strip()}")
+                        time.sleep(0.5 * attempt)  # 递增等待，让 7z.exe 释放句柄
 
                 if result.returncode == 0:
-                    break
-                if attempt < MAX_RETRIES:
-                    print(f"{thread_tag()} ⚠️  7-Zip命令执行失败 {file_tag(zip_path)}，第{attempt}次重试: {result.stderr.strip()}")
-                    time.sleep(0.5 * attempt)  # 递增等待，让 7z.exe 释放句柄
-
-            if result.returncode == 0:
-                if target_exists or other_xml_files:
-                    print(f"{thread_tag()} ✅ 使用7-Zip成功更新文件 {file_tag(zip_path)}: {file_name}")
+                    if target_exists or other_xml_files:
+                        print(f"{thread_tag()} ✅ 使用7-Zip成功更新文件 {file_tag(zip_path)}: {file_name}")
+                    else:
+                        print(f"{thread_tag()} ✅ 使用7-Zip成功添加文件 {file_tag(zip_path)}: {file_name}")
+                    return True
                 else:
-                    print(f"{thread_tag()} ✅ 使用7-Zip成功添加文件 {file_tag(zip_path)}: {file_name}")
-                return True
-            else:
-                print(f"{thread_tag()} ⚠️  7-Zip命令执行失败(重试{MAX_RETRIES}次) {file_tag(zip_path)}: {result.stderr.strip()}")
-                # 尝试通用归档格式处理
-                print(f"{thread_tag()} 🔄 尝试通用归档格式处理...")
-                return _fallback_write(zip_path, file_content, file_name,
-                                       target_exists=bool(target_exists),
-                                       target_ext=target_ext,
-                                       keep_original=keep_original)
+                    print(f"{thread_tag()} ⚠️  7-Zip命令执行失败(重试{MAX_RETRIES}次) {file_tag(zip_path)}: {result.stderr.strip()}")
+                    # 尝试通用归档格式处理
+                    print(f"{thread_tag()} 🔄 尝试通用归档格式处理...")
+                    return _fallback_write(zip_path, file_content, file_name,
+                                           target_exists=bool(target_exists),
+                                           target_ext=target_ext,
+                                           keep_original=keep_original)
+            finally:
+                lock_stack.close()
         else:
             # 7-Zip不可用，尝试通用归档格式处理
             print(f"{thread_tag()} ⚠️  7-Zip未找到，尝试通用归档格式处理")

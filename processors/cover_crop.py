@@ -13,11 +13,13 @@
 import os
 import tempfile
 import zipfile
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from .cover_utils import get_zip_cover_info, get_zip_first_image, read_zip_entry
 from .image_cropper import ImageCropper
+from .utils import zip_lock
 
 
 def _cover_pair_names(cover_name: str) -> Tuple[str, str]:
@@ -55,7 +57,12 @@ def _rebuild_zip(zip_path: str, cover_name: str, old_name: str, new_name: str,
                  old_bytes: bytes, new_bytes: bytes) -> bool:
     """重建 ZIP：__new 第一位，原封面重命名 __old，其余条目顺序不变"""
     tmp_path = zip_path + ".tmp"
+    # 封面裁剪也是 zip 原地写：与 XML 写盘同一把文件级互斥锁，避免与另一
+    # 实例的保存/裁剪并发重写同一 zip
+    lock_stack = ExitStack()
     try:
+        if not lock_stack.enter_context(zip_lock(zip_path)):
+            return False
         with zipfile.ZipFile(zip_path, "r") as zin, \
                 zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zout:
             # 1. __new 排第一位（漫画软件读取的封面）
@@ -85,6 +92,8 @@ def _rebuild_zip(zip_path: str, cover_name: str, old_name: str, new_name: str,
             except OSError:
                 pass
         return False
+    finally:
+        lock_stack.close()
 
 
 def crop_zip_cover(zip_path: str,
