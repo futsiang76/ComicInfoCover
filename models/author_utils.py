@@ -340,6 +340,32 @@ def filter_results_by_author(search_results: List[Dict], folder_author: str,
     return matching_results
 
 
+def relax_author_filter(search_results: List[Dict], limit: int = 5) -> List[Dict]:
+    """作者过滤 0 结果时放宽：漫画系列优先、漫画次之，取前 limit 个
+
+    作者名可能因繁简/中日英/假名差异比对失败，此时不再直接「无结果」，
+    而是按 series/platform 排序（漫画系列 > 漫画单卷 > 其它[小说等]）
+    取前 limit 个系列名匹配结果。sorted 为稳定排序，同优先级保持
+    search_results 原顺序（即匹配度降序）。
+
+    Args:
+        search_results: 搜索结果列表（每项含 Bangumi 原始字段 series/platform）
+        limit: 最多返回的结果数
+
+    Returns:
+        List[Dict]: 放宽后的前 limit 个结果
+    """
+    def _key(r):
+        is_series = bool(r.get("series", False))
+        platform = r.get("platform", "")
+        if platform == "漫画" and is_series:
+            return 0  # 漫画系列
+        if platform == "漫画":
+            return 1  # 漫画（单卷）
+        return 2      # 其它（小说系列/小说/未知）
+    return sorted(search_results, key=_key)[:limit]
+
+
 def match_author( folder_author: str, bangumi_authors: List[str]) -> bool:
     """验证作者名是否匹配（任一作者≥阈值即匹配）"""
     if not bangumi_authors:

@@ -142,7 +142,12 @@ def process_normal_folder(folder_path: str, folder_info: Dict, fetcher, depth: i
     
     # 4. 过滤匹配结果
     matching_results = search_handler.filter_matching_results(search_results, folder_info, AUTHOR_MATCH_THRESHOLD)
-    
+    # 作者过滤 0 结果但搜索有结果：放宽为系列名匹配前5个（漫画系列优先）
+    if not matching_results and search_results:
+        from models.author_utils import relax_author_filter
+        matching_results = relax_author_filter(search_results)
+        print(f"{'  ' * depth}💡 作者匹配失败，放宽为系列名匹配结果 {len(matching_results)} 个（漫画系列优先）")
+
     # 5. 根据匹配结果数量决定处理方式
     if len(matching_results) == 0:
         # 没有作者匹配结果，进入搜索失败流程
