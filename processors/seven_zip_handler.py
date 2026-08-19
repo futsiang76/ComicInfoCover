@@ -130,7 +130,7 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str,
                     try:
                         zout.writestr(name, zin.read(name))  # 读一个写一个，不整卷进内存
                     except Exception as e:
-                        print(f"⚠️  读取/写入文件失败 [{name}]: {str(e)[:30]}")
+                        print(f"⚠️  读取/写入文件失败 [{os.path.basename(zip_path)}] 条目 [{name}]: {str(e)[:200]}")
                 # 写入新 XML
                 zout.writestr(file_name, file_content.encode('utf-8'))
         finally:
@@ -142,11 +142,25 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str,
             if bad_file is None:
                 print("   🔍 CRC校验通过: 临时ZIP文件完整")
             else:
-                print(f"   ⚠️  CRC校验失败: 损坏的文件 {bad_file}")
-                raise Exception(f"临时ZIP文件CRC校验失败: {bad_file}")
+                print(f"   ⚠️  CRC校验失败 [{os.path.basename(zip_path)}]: 损坏的文件 {bad_file}")
+                raise Exception(f"临时ZIP文件CRC校验失败 [{os.path.basename(zip_path)}]: {bad_file}")
 
-        # 原子替换回原路径
-        os.replace(temp_zip_path, zip_path)
+        # 原子替换回原路径：目标 zip 可能被其它进程（Komga 扫描/资源管理器预览/杀软）
+        # 瞬时占用，os.replace 抛 WinError 5(拒绝访问)/32(文件被占用) 时递增等待重试；
+        # 非占用类错误（如 WinError 17 跨盘）不重试直接抛
+        max_replace_retries = 3
+        for attempt in range(1, max_replace_retries + 1):
+            try:
+                os.replace(temp_zip_path, zip_path)
+                break
+            except OSError as e:
+                winerror = getattr(e, 'winerror', None)
+                is_lock_error = (winerror in (5, 32) if winerror is not None
+                                 else e.errno == 13)
+                if is_lock_error and attempt < max_replace_retries:
+                    time.sleep(0.5 * attempt)
+                else:
+                    raise
 
         if xml_exists:
             print(f"✅ 使用zipfile成功更新文件: {file_name}")
@@ -154,7 +168,7 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str,
             print(f"✅ 使用zipfile成功添加文件: {file_name}")
         return True
     except Exception as e:
-        print(f"🔴 回退方法失败: {str(e)[:50]}")
+        print(f"🔴 回退方法失败 [{os.path.basename(zip_path)}]: {str(e)}")
         # 失败清理与目标文件同目录的临时文件
         if 'temp_zip_path' in locals() and os.path.exists(temp_zip_path):
             try:

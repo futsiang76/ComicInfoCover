@@ -100,9 +100,10 @@ def test_cb7_seven_zip_all_fail_fallback(monkeypatch, tmp_path, capsys):
 
 
 def test_add_with_zipfile_replace_fail_cleanup(monkeypatch, tmp_path, capsys):
-    """原子替换失败（os.replace 抛错）时返回 False 并清理系统临时目录临时文件"""
+    """原子替换失败（占用类错误重试 3 次后仍失败）时返回 False 并清理临时文件"""
     zip_path = _make_zip(tmp_path / "vol03.cbz",
                          xml="<ComicInfo><Title>旧</Title></ComicInfo>")
+    sleep_calls = _patch_sleep(monkeypatch)
     seen_src = []
 
     def fake_replace(src, dst):
@@ -116,7 +117,65 @@ def test_add_with_zipfile_replace_fail_cleanup(monkeypatch, tmp_path, capsys):
         "ComicInfo.xml", xml_exists=True)
 
     assert ok is False
-    assert len(seen_src) == 1
+    assert len(seen_src) == 3  # 占用类错误递增重试 3 次
+    assert sleep_calls == [0.5, 1.0]  # sleep 0.5 / 1.0
     assert not os.path.exists(seen_src[0])  # 失败后临时文件已清理
     out = capsys.readouterr().out
     assert "回退方法失败" in out
+    assert "vol03.cbz" in out  # 错误消息带文件名，可定位失败文件
+
+
+def test_add_with_zipfile_replace_retry_then_success(monkeypatch, tmp_path):
+    """os.replace 前两次 WinError 32(文件被占用)，第 3 次成功 → 重试恢复并返回 True"""
+    zip_path = _make_zip(tmp_path / "vol04.cbz",
+                         xml="<ComicInfo><Title>旧</Title></ComicInfo>")
+    sleep_calls = _patch_sleep(monkeypatch)
+    seen_src = []
+    real_replace = os.replace
+
+    def flaky_replace(src, dst):
+        seen_src.append(src)
+        if len(seen_src) < 3:
+            e = OSError(13, "另一个程序正在使用此文件", dst)
+            e.winerror = 32
+            raise e
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", flaky_replace)
+
+    ok = zip_operations._add_with_zipfile(
+        zip_path, "<ComicInfo><Title>新</Title></ComicInfo>",
+        "ComicInfo.xml", xml_exists=True)
+
+    assert ok is True
+    assert len(seen_src) == 3  # 前两次占用失败，第 3 次成功
+    assert sleep_calls == [0.5, 1.0]
+    with zipfile.ZipFile(zip_path) as zf:
+        assert b"<Title>" in zf.read("ComicInfo.xml")  # 重试后替换成功
+
+
+def test_add_with_zipfile_replace_no_retry_on_cross_device(monkeypatch, tmp_path, capsys):
+    """非占用类错误（WinError 17 跨盘）不重试，直接失败返回 False"""
+    zip_path = _make_zip(tmp_path / "vol05.cbz",
+                         xml="<ComicInfo><Title>旧</Title></ComicInfo>")
+    sleep_calls = _patch_sleep(monkeypatch)
+    seen_src = []
+
+    def fake_replace(src, dst):
+        seen_src.append(src)
+        e = OSError(18, "系统无法将文件移到不同的驱动器", dst)
+        e.winerror = 17
+        raise e
+
+    monkeypatch.setattr(os, "replace", fake_replace)
+
+    ok = zip_operations._add_with_zipfile(
+        zip_path, "<ComicInfo><Title>新</Title></ComicInfo>",
+        "ComicInfo.xml", xml_exists=True)
+
+    assert ok is False
+    assert len(seen_src) == 1  # 非占用类错误不重试
+    assert sleep_calls == []
+    assert not os.path.exists(seen_src[0])
+    out = capsys.readouterr().out
+    assert "vol05.cbz" in out  # 错误消息带文件名
