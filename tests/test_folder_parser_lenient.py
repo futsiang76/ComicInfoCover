@@ -304,3 +304,27 @@ class TestEdgeCases:
         assert "+剧场版" in r["tags"]
         assert "+剑心皆传+剧场版" not in r["tags"]
         assert r["extras"] == "剑心皆传+剧场版"
+
+
+class TestWeekdaySeriesName:
+    """星期X 系列名不能被「期+中文数字」卷标规则误剥（2026-08-19）"""
+
+    def test_blood_monday_keeps_qiyi(self):
+        # VOL_RE 曾把「星期一」的「期一」当内联卷标剥掉 → series 少「期一」
+        r = _parse("[惠广史] 血色星期一 (V11全)")
+        assert r["author"] == "惠广史"
+        assert r["series"] == "血色星期一"
+        assert r["vol_info"] == "V11全"
+        assert r["total_volumes"] == 11
+        assert r["complete"] is True
+        assert r["vol_type"] == "已完结"
+
+    def test_qi_volume_marker_still_recognized(self):
+        # 回归：「期」卷标（数字在前 X期）仍由 [0-9]+\s*[期] 命中
+        r = _parse("[作者] 作品 (第3期)")
+        assert r["series"] == "作品"
+        assert r["vol_info"] == "3期"
+        assert r["total_volumes"] == 3
+        r2 = _parse("[作者] 作品 (3期)")
+        assert r2["vol_info"] == "3期"
+        assert r2["total_volumes"] == 3
