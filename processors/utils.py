@@ -5,7 +5,30 @@
 """
 
 import os
+import threading
 from typing import Dict, List, Optional, Tuple
+
+
+def thread_tag() -> str:
+    """写盘日志线程标识前缀，如 [Dummy-2/1a2b3c4d]
+
+    并发写盘（多个 SaveThread 同时写同一批 zip）时日志需能区分是哪个线程在
+    读写哪个文件。线程名（QThread 场景下 Python 侧为 Dummy-N）+ 线程 id
+    短 hex 唯一确定一个线程；同一写盘链路上各模块调用它得到的值一致，
+    便于跨模块串起一个线程的完整读写过程。
+    """
+    return f"[{threading.current_thread().name}/{threading.get_ident():x}]"
+
+
+def file_tag(zip_path: str) -> str:
+    """写盘日志文件标识：系列文件夹名/文件名，如 [宫崎摩耶系列/Vol 08.zip]
+
+    比纯 basename 更能定位「是哪套书」：同名 Vol 08.zip 在不同系列文件夹下
+    无法区分，带上层文件夹名（通常是系列名）即可唯一辨识。zip_path 在盘根
+    等无上层目录名时退化为显示盘符/目录路径。
+    """
+    folder = os.path.basename(os.path.dirname(zip_path)) or os.path.dirname(zip_path)
+    return f"[{folder}/{os.path.basename(zip_path)}]"
 
 
 def process_short_story_folder(folder_path: str, folder_info: Dict, depth: int = 0) -> Dict:

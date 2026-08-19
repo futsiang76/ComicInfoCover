@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import config
 from parsers.file_parser import (generate_smart_title,
                                  parse_volume_from_filename)
+from processors.utils import file_tag, thread_tag
 from processors.xml_generator import XMLGenerator
 
 def _compare_xml_content(existing_xml: str, new_xml: str) -> bool:
@@ -58,7 +59,7 @@ def _compare_xml_content(existing_xml: str, new_xml: str) -> bool:
             new_val = new_fields.get(key, "")
             if old_val != new_val:
                 status = "删除" if not new_val else "新增" if not old_val else "修改"
-                print(f"  📋 字段 [{key}] {status}: 已有=[{str(old_val)[:60]}]  新=[{str(new_val)[:60]}]")
+                print(f"{thread_tag()}   📋 字段 [{key}] {status}: 已有=[{str(old_val)[:60]}]  新=[{str(new_val)[:60]}]")
                 return False
 
         return True
@@ -110,7 +111,7 @@ def check_zip_xml_files(zip_path: str, new_xml_content: str, target_file_name: s
             return target_exists, content_matches, other_xml_files
             
     except Exception as e:
-        print(f"⚠️  检查ZIP文件失败 [{zip_path}]: {str(e)[:50]}")
+        print(f"{thread_tag()} ⚠️  检查ZIP文件失败 [{zip_path}]: {str(e)[:50]}")
         return False, False, []
 
 
@@ -155,7 +156,7 @@ def read_xml_from_zip(zip_path: str, target_file_name: str = 'ComicInfo.xml') ->
             return comic_info
             
     except Exception as e:
-        print(f"⚠️  读取ZIP文件XML失败 [{zip_path}]: {str(e)[:50]}")
+        print(f"{thread_tag()} ⚠️  读取ZIP文件XML失败 [{zip_path}]: {str(e)[:50]}")
         return None
 
 
@@ -246,12 +247,12 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
     try:
         # 检查文件是否存在
         if not os.path.exists(zip_path):
-            print(f"🔴 文件不存在: {zip_path}")
+            print(f"{thread_tag()} 🔴 文件不存在: {zip_path}")
             return False
 
         # 需要转换格式：手动选择 CBZ/ZIP/CB7，或 keep 模式下 rar/cbr/7z 自动转 CBZ
         if target_ext is not None and current_ext != target_ext:
-            print(f"🔄 检测到格式转换: {os.path.basename(zip_path)} → {target_ext}")
+            print(f"{thread_tag()} 🔄 检测到格式转换 {file_tag(zip_path)} → {target_ext}")
             if current_ext in ('.cbz', '.zip') and target_ext in ('.cbz', '.zip'):
                 # zip 容器互转：zipfile 写，无需 7z
                 return _convert_zip_container(zip_path, file_content, file_name,
@@ -269,7 +270,7 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
             try:
                 target_exists, content_matches, other_xml_files = check_zip_xml_files(zip_path, file_content, file_name)
             except Exception as e:
-                print(f"⚠️  检查文件失败，可能是RAR格式: {str(e)[:50]}")
+                print(f"{thread_tag()} ⚠️  检查文件失败 {file_tag(zip_path)}，可能是RAR格式: {str(e)[:50]}")
                 # 假设文件是归档格式，需要特殊处理
                 return _fallback_write(zip_path, file_content, file_name,
                                        target_exists=False,
@@ -281,12 +282,12 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
 
         # 模式1：有XML就跳过（不比较内容）
         if MODE_SKIP_XMLEXIST == 1 and target_exists:
-            print(f"⏭️  跳过已有XML的文件: {file_name}")
+            print(f"{thread_tag()} ⏭️  跳过已有XML的文件 {file_tag(zip_path)}: {file_name}")
             return True  # 有XML就跳过，不处理
         
         # 模式2：只处理已有XML的文件（修正模式）
         if MODE_SKIP_XMLEXIST == 2 and not target_exists:
-            print(f"⏭️  跳过没有XML的文件: {file_name}")
+            print(f"{thread_tag()} ⏭️  跳过没有XML的文件 {file_tag(zip_path)}: {file_name}")
             return True  # 没有XML就跳过，只处理有XML的文件
         
         # 模式0：按现有策略修改（默认）
@@ -298,9 +299,9 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
             other_xml_files = [f for f in other_xml_files if not f.startswith('.temp_')]
             
             if temp_files:
-                print(f"⚠️  发现临时文件: {temp_files}，需要删除")
+                print(f"{thread_tag()} ⚠️  发现临时文件 {file_tag(zip_path)}: {temp_files}，需要删除")
             if other_xml_files:
-                print(f"⚠️  发现其它XML文件: {other_xml_files}，强制删除并用{file_name}复写")
+                print(f"{thread_tag()} ⚠️  发现其它XML文件 {file_tag(zip_path)}: {other_xml_files}，强制删除并用{file_name}复写")
             
             # 合并所有需要删除的文件
             files_to_delete = temp_files + other_xml_files
@@ -309,7 +310,7 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
         
         # 2. 如果没有其它XML文件，但有ComicInfo.xml，比较内容决定是否复写
         elif target_exists and content_matches:
-            print(f"⏭️  XML内容一致，跳过文件: {file_name}")
+            print(f"{thread_tag()} ⏭️  XML内容一致，跳过文件 {file_tag(zip_path)}: {file_name}")
             return True  # 内容一致，无需处理
         
         # 3. 其它情况（目标文件不存在，或内容不一致）都需要处理
@@ -359,9 +360,9 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
                         )
                     
                     if delete_result.returncode == 0:
-                        print(f"✅ 使用7-Zip成功删除文件: {xml_file}")
+                        print(f"{thread_tag()} ✅ 使用7-Zip成功删除文件 {file_tag(zip_path)}: {xml_file}")
                     else:
-                        print(f"⚠️  删除文件失败: {xml_file}")
+                        print(f"{thread_tag()} ⚠️  删除文件失败 {file_tag(zip_path)}: {xml_file}")
             
             # 使用7-Zip的stdin功能直接从临时文件添加，避免在目标文件夹创建文件
             # 这样可以减少对目标硬盘的读写操作
@@ -396,35 +397,35 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
                 if result.returncode == 0:
                     break
                 if attempt < MAX_RETRIES:
-                    print(f"⚠️  7-Zip命令执行失败，第{attempt}次重试: {result.stderr.strip()}")
+                    print(f"{thread_tag()} ⚠️  7-Zip命令执行失败 {file_tag(zip_path)}，第{attempt}次重试: {result.stderr.strip()}")
                     time.sleep(0.5 * attempt)  # 递增等待，让 7z.exe 释放句柄
 
             if result.returncode == 0:
                 if target_exists or other_xml_files:
-                    print(f"✅ 使用7-Zip成功更新文件: {file_name}")
+                    print(f"{thread_tag()} ✅ 使用7-Zip成功更新文件 {file_tag(zip_path)}: {file_name}")
                 else:
-                    print(f"✅ 使用7-Zip成功添加文件: {file_name}")
+                    print(f"{thread_tag()} ✅ 使用7-Zip成功添加文件 {file_tag(zip_path)}: {file_name}")
                 return True
             else:
-                print(f"⚠️  7-Zip命令执行失败(重试{MAX_RETRIES}次): {result.stderr.strip()}")
+                print(f"{thread_tag()} ⚠️  7-Zip命令执行失败(重试{MAX_RETRIES}次) {file_tag(zip_path)}: {result.stderr.strip()}")
                 # 尝试通用归档格式处理
-                print("🔄 尝试通用归档格式处理...")
+                print(f"{thread_tag()} 🔄 尝试通用归档格式处理...")
                 return _fallback_write(zip_path, file_content, file_name,
                                        target_exists=bool(target_exists),
                                        target_ext=target_ext,
                                        keep_original=keep_original)
         else:
             # 7-Zip不可用，尝试通用归档格式处理
-            print("⚠️  7-Zip未找到，尝试通用归档格式处理")
+            print(f"{thread_tag()} ⚠️  7-Zip未找到，尝试通用归档格式处理")
             return _fallback_write(zip_path, file_content, file_name,
                                    target_exists=bool(target_exists),
                                    target_ext=target_ext,
                                    keep_original=keep_original)
             
     except Exception as e:
-        print(f"🔴 添加文件失败 [{zip_path}]: {str(e)[:50]}")
+        print(f"{thread_tag()} 🔴 添加文件失败 [{zip_path}]: {str(e)[:50]}")
         # 尝试通用归档格式处理
-        print("🔄 尝试通用归档格式处理...")
+        print(f"{thread_tag()} 🔄 尝试通用归档格式处理...")
         try:
             return _fallback_write(zip_path, file_content, file_name,
                                    target_exists=locals().get('target_exists', False),
@@ -470,7 +471,7 @@ def _check_xml_via_seven_zip(archive_path: str, new_xml_content: str,
 
         return target_exists, content_matches, other_xml_files
     except Exception as e:
-        print(f"⚠️  检查归档文件失败 [{archive_path}]: {str(e)[:50]}")
+        print(f"{thread_tag()} ⚠️  检查归档文件失败 [{archive_path}]: {str(e)[:50]}")
         return False, False, []
 
 
@@ -500,7 +501,7 @@ def _read_xml_via_seven_zip(archive_path: str,
 
         return comic_info
     except Exception as e:
-        print(f"⚠️  读取归档文件XML失败 [{archive_path}]: {str(e)[:50]}")
+        print(f"{thread_tag()} ⚠️  读取归档文件XML失败 [{archive_path}]: {str(e)[:50]}")
         return None
 
 from .seven_zip_handler import (_add_with_zipfile, _check_seven_zip_available,

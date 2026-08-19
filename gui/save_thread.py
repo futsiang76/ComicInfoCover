@@ -45,8 +45,12 @@ class SaveThread(QThread):
     def run(self) -> None:
         from processors.xml_generator import XMLGenerator, build_file_comicinfo
         from processors.zip_handler import add_file_to_zip, check_zip_xml_files
+        from processors.utils import thread_tag
 
         xml_generator = XMLGenerator()
+        # 线程标识（如 [Dummy-2/1a2b3c4d]），与 processors 层写盘日志同格式，
+        # 便于把「进度/错误」与「哪个线程写哪个文件」对应起来
+        tag = thread_tag()
 
         total_files = self._count_total_files()
         processed = 0
@@ -56,7 +60,7 @@ class SaveThread(QThread):
         for result in self.modified_results:
             folder_path = result.get("folder_path", "")
             if not folder_path or not os.path.isdir(folder_path):
-                error_messages.append(f"文件夹不存在: {folder_path}")
+                error_messages.append(f"{tag} 文件夹不存在: {folder_path}")
                 continue
 
             # 获取该系列的 file_titles、file_details 和 locked_files
@@ -73,7 +77,8 @@ class SaveThread(QThread):
                     continue
 
                 processed += 1
-                self.progress_updated.emit(processed, total_files, filename)
+                self.progress_updated.emit(processed, total_files,
+                                           f"{tag} {os.path.basename(folder_path)}/{filename}")
 
                 try:
                     # per-file 字段统一入口（系列字段 + Title/Volume/Number/锁定字段/Notes）
@@ -98,7 +103,7 @@ class SaveThread(QThread):
                     if write_result:
                         success_files += 1
                     else:
-                        error_messages.append(f"写入失败: {filename}")
+                        error_messages.append(f"{tag} 写入失败: {os.path.basename(folder_path)}/{filename}")
 
                     # 更新 SQLite 锁定状态缓存
                     try:
@@ -114,6 +119,6 @@ class SaveThread(QThread):
                         pass
 
                 except Exception as e:
-                    error_messages.append(f"处理失败 {filename}: {str(e)[:80]}")
+                    error_messages.append(f"{tag} 处理失败 {os.path.basename(folder_path)}/{filename}: {str(e)[:80]}")
 
         self.save_finished.emit(processed, success_files, error_messages)

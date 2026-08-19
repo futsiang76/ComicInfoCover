@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from parsers.file_parser import (generate_smart_title,
                                  parse_volume_from_filename)
+from processors.utils import file_tag, thread_tag
 from processors.xml_generator import XMLGenerator
 
 def _check_seven_zip_available() -> str:
@@ -130,7 +131,7 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str,
                     try:
                         zout.writestr(name, zin.read(name))  # 读一个写一个，不整卷进内存
                     except Exception as e:
-                        print(f"⚠️  读取/写入文件失败 [{os.path.basename(zip_path)}] 条目 [{name}]: {str(e)[:200]}")
+                        print(f"{thread_tag()} ⚠️  读取/写入文件失败 {file_tag(zip_path)} 条目 [{name}]: {str(e)[:200]}")
                 # 写入新 XML
                 zout.writestr(file_name, file_content.encode('utf-8'))
         finally:
@@ -140,9 +141,9 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str,
         with zipfile.ZipFile(temp_zip_path, 'r') as zf:
             bad_file = zf.testzip()
             if bad_file is None:
-                print("   🔍 CRC校验通过: 临时ZIP文件完整")
+                print(f"{thread_tag()}   🔍 CRC校验通过 {file_tag(zip_path)}: 临时ZIP文件完整")
             else:
-                print(f"   ⚠️  CRC校验失败 [{os.path.basename(zip_path)}]: 损坏的文件 {bad_file}")
+                print(f"{thread_tag()}   ⚠️  CRC校验失败 {file_tag(zip_path)}: 损坏的文件 {bad_file}")
                 raise Exception(f"临时ZIP文件CRC校验失败 [{os.path.basename(zip_path)}]: {bad_file}")
 
         # 原子替换回原路径：目标 zip 可能被其它进程（Komga 扫描/资源管理器预览/杀软）
@@ -158,17 +159,18 @@ def _add_with_zipfile(zip_path: str, file_content: str, file_name: str,
                 is_lock_error = (winerror in (5, 32) if winerror is not None
                                  else e.errno == 13)
                 if is_lock_error and attempt < max_replace_retries:
+                    print(f"{thread_tag()} ⚠️ os.replace 重试中（第 {attempt} 次） {file_tag(zip_path)}: {str(e)[:120]}")
                     time.sleep(0.5 * attempt)
                 else:
                     raise
 
         if xml_exists:
-            print(f"✅ 使用zipfile成功更新文件: {file_name}")
+            print(f"{thread_tag()} ✅ 使用zipfile成功更新文件 {file_tag(zip_path)}: {file_name}")
         else:
-            print(f"✅ 使用zipfile成功添加文件: {file_name}")
+            print(f"{thread_tag()} ✅ 使用zipfile成功添加文件 {file_tag(zip_path)}: {file_name}")
         return True
     except Exception as e:
-        print(f"🔴 回退方法失败 [{os.path.basename(zip_path)}]: {str(e)}")
+        print(f"{thread_tag()} 🔴 回退方法失败 {file_tag(zip_path)}: {str(e)}")
         # 失败清理与目标文件同目录的临时文件
         if 'temp_zip_path' in locals() and os.path.exists(temp_zip_path):
             try:
@@ -210,16 +212,16 @@ def _convert_zip_container(zip_path: str, file_content: str, file_name: str,
                 zf.writestr(name, content)
             zf.writestr(file_name, file_content.encode('utf-8'))
     except (zipfile.BadZipFile, OSError) as e:
-        print(f"🔴 ZIP 容器转换失败 [{os.path.basename(zip_path)}]: {str(e)[:100]}")
+        print(f"{thread_tag()} 🔴 ZIP 容器转换失败 {file_tag(zip_path)}: {str(e)[:100]}")
         return False
 
     if not keep_original and os.path.abspath(new_path) != os.path.abspath(zip_path):
         try:
             os.remove(zip_path)
-            print(f"🗑️   已删除原始文件: {os.path.basename(zip_path)}")
+            print(f"{thread_tag()} 🗑️   已删除原始文件 {file_tag(zip_path)}")
         except OSError as e:
-            print(f"⚠️   删除原始文件失败: {str(e)[:100]}")
-    print(f"✅ 成功转换并添加文件: {file_name}")
+            print(f"{thread_tag()} ⚠️   删除原始文件失败 {file_tag(zip_path)}: {str(e)[:100]}")
+    print(f"{thread_tag()} ✅ 成功转换并添加文件 {file_tag(zip_path)}: {file_name}")
     return True
 
 
@@ -244,7 +246,7 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
         # 检查7-Zip是否可用
         seven_zip_path = _check_seven_zip_available()
         if not seven_zip_path:
-            print("🔴 7-Zip不可用，无法处理归档格式")
+            print(f"{thread_tag()} 🔴 7-Zip不可用，无法处理归档格式 {file_tag(zip_path)}")
             return False
         
         # 创建临时目录（为每个实例生成唯一路径）
@@ -256,7 +258,7 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
         os.makedirs(extract_dir, exist_ok=True)
         
         # 提取文件内容
-        print(f"🔄 提取文件内容...")
+        print(f"{thread_tag()} 🔄 提取文件内容 {file_tag(zip_path)}...")
         extract_success = False
         
         # 尝试不同的提取方法（只保留成功的方法）
@@ -267,20 +269,20 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
         
         for i, method in enumerate(extraction_methods):
             try:
-                print(f"   尝试提取方法 {i+1}...")
+                print(f"{thread_tag()}   尝试提取方法 {i+1}...")
                 result = method()
                 if result.returncode == 0:
-                    print("   ✅ 提取成功")
+                    print(f"{thread_tag()}   ✅ 提取成功")
                     extract_success = True
                     break
                 else:
                     # 不显示具体错误信息，直接显示下一步
-                    print("   ⚠️  提取失败，尝试下一步处理")
+                    print(f"{thread_tag()}   ⚠️  提取失败，尝试下一步处理")
             except Exception as e:
-                print("   ⚠️  方法执行失败，尝试下一步处理")
+                print(f"{thread_tag()}   ⚠️  方法执行失败，尝试下一步处理")
         
         if not extract_success:
-            print("🔴 所有提取方法都失败")
+            print(f"{thread_tag()} 🔴 所有提取方法都失败 {file_tag(zip_path)}")
             return False
         
         # 写入新的XML文件
@@ -294,7 +296,7 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
         temp_zip_path = os.path.join(temp_dir, safe_temp_name)
         
         # 将提取的内容重新压缩为ZIP
-        print(f"🔄 重新压缩为{target_ext}格式...")
+        print(f"{thread_tag()} 🔄 重新压缩为{target_ext}格式 {file_tag(zip_path)}...")
         zip_success = False
 
         # .cb7 用 7z 容器（-mx=0 禁用压缩，后续按图片格式压缩），其余用 zip 容器
@@ -305,20 +307,20 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
         
         for i, method in enumerate(compression_methods):
             try:
-                print(f"   尝试压缩方法 {i+1}...")
+                print(f"{thread_tag()}   尝试压缩方法 {i+1}...")
                 result = method()
                 if result.returncode == 0:
-                    print("   ✅ 压缩成功")
+                    print(f"{thread_tag()}   ✅ 压缩成功")
                     zip_success = True
                     break
                 else:
                     # 不显示具体错误信息，直接显示下一步
-                    print("   ⚠️  压缩失败，尝试下一步处理")
+                    print(f"{thread_tag()}   ⚠️  压缩失败，尝试下一步处理")
             except Exception as e:
-                print("   ⚠️  方法执行失败，尝试下一步处理")
+                print(f"{thread_tag()}   ⚠️  方法执行失败，尝试下一步处理")
         
         if not zip_success:
-            print("🔴 所有压缩方法都失败")
+            print(f"{thread_tag()} 🔴 所有压缩方法都失败 {file_tag(zip_path)}")
             return False
         
         # 替换原始文件，扩展名改为目标格式
@@ -332,12 +334,12 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
         if not keep_original and zip_path != new_zip_path:
             try:
                 os.remove(zip_path)
-                print(f"🗑️   已删除原始文件: {os.path.basename(zip_path)}")
+                print(f"{thread_tag()} 🗑️   已删除原始文件 {file_tag(zip_path)}")
             except Exception as e:
-                print(f"⚠️   删除原始文件失败: {str(e)}")
+                print(f"{thread_tag()} ⚠️   删除原始文件失败 {file_tag(zip_path)}: {str(e)}")
 
-        print(f"✅ 成功将文件转换为{target_ext}并添加文件: {file_name}")
-        print(f"📁 新文件: {os.path.basename(new_zip_path)}")
+        print(f"{thread_tag()} ✅ 成功将文件转换为{target_ext}并添加文件 {file_tag(zip_path)}: {file_name}")
+        print(f"{thread_tag()} 📁 新文件: {os.path.basename(new_zip_path)}")
         
         # 清理临时文件
         if os.path.exists(extract_dir):
@@ -347,7 +349,7 @@ def _handle_archive_format(zip_path: str, file_content: str, file_name: str = 'C
         
         return True
     except Exception as e:
-        print(f"🔴 处理归档格式失败: {str(e)[:50]}")
+        print(f"{thread_tag()} 🔴 处理归档格式失败 {file_tag(zip_path)}: {str(e)[:50]}")
         # 清理临时文件
         if 'extract_dir' in locals() and os.path.exists(extract_dir):
             try:
@@ -421,7 +423,7 @@ def _extract_file_via_seven_zip(archive_path: str, file_name: str = 'ComicInfo.x
         # 二进制模式读取，显式 UTF-8 解码，避免 Windows 默认编码（GBK）破坏中文内容
         return result.stdout.decode('utf-8', errors='replace')
     except Exception as e:
-        print(f"⚠️  使用7-Zip提取文件失败 [{archive_path}]: {str(e)[:50]}")
+        print(f"{thread_tag()} ⚠️  使用7-Zip提取文件失败 [{archive_path}]: {str(e)[:50]}")
         return None
 
 
@@ -459,6 +461,6 @@ def _list_xml_files_via_seven_zip(archive_path: str) -> List[str]:
                     xml_files.append(name)
         return xml_files
     except Exception as e:
-        print(f"⚠️  使用7-Zip列出XML失败 [{archive_path}]: {str(e)[:50]}")
+        print(f"{thread_tag()} ⚠️  使用7-Zip列出XML失败 [{archive_path}]: {str(e)[:50]}")
         return []
 

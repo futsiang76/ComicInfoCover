@@ -15,6 +15,7 @@ from config import (SOURCE_BANGUMI_TEXT, SOURCE_COMICVINE_TEXT,
                     SOURCE_MANHUAGUI_TEXT)
 
 from .edit_dialog import EditDialog
+from .save_handler import save_single_result
 from .scan_tab import apply_source_mode_constraint
 from .scan_thread import ScanThread
 from .utils import start_loading_cat, stop_loading_cat
@@ -465,12 +466,16 @@ def _on_full_match_series_saved(mw, result: Dict) -> None:
     """全匹配模式逐系列保存信号：结果入库 → 立即静默写盘（主线程槽，QueuedConnection）
 
     每个系列确认后即时保存，保证扫描中途崩溃/强制停止时已确认结果不丢失。
-    时序设计：确认后立即启动写盘（xml+打包异步），同时 worker 可继续弹下一系列
-    XML 处理窗。结果表刷新延后到写盘完成槽 _on_save_finished 里的
+    只保存当前这一个 result（save_single_result），绝不调 save_changes——
+    后者会收集 scan_results 里【所有】"已修改"结果，导致后确认的系列把前面
+    已写的系列重复写盘，且多个 SaveThread 并发写同一批 zip（WinError 5 +
+    G:/.comicscratch_tmp 多份相同 tmp）。save_single_result 自带等待队列：
+    已有保存线程在跑时入队，前一个完成后立即续写，任意时刻保存线程数 ≤1。
+    结果表刷新延后到写盘完成槽 _on_save_finished 里的
     update_results_table，避免写盘期间并发读 zip。
     """
     mw.scan_results.append(result)
-    mw.save_changes(show_result=False)
+    save_single_result(mw, result)
 
 
 def _on_full_match_completed(mw, results: List[Dict], mode: int = 0) -> None:
