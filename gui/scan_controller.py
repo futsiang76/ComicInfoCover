@@ -9,6 +9,7 @@ from functools import partial
 from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtCore import Qt
 
 from config import (SOURCE_BANGUMI_TEXT, SOURCE_COMICVINE_TEXT,
                     SOURCE_MANHUAGUI_TEXT)
@@ -113,7 +114,7 @@ def start_scan(mw):
         thread.progress_range.connect(partial(_on_full_match_progress_range, mw))
         thread.log_message.connect(partial(_on_full_match_log, mw))
         thread.scan_completed.connect(partial(_on_full_match_completed, mw))
-        thread.series_saved.connect(partial(_on_full_match_series_saved, mw))
+        thread.series_saved.connect(partial(_on_full_match_series_saved, mw), Qt.ConnectionType.QueuedConnection)
         thread.series_finished.connect(partial(_on_full_match_series_finished, mw))
         thread.error_occurred.connect(partial(on_error_occurred, mw))
 
@@ -202,7 +203,7 @@ def _start_manhuagui_scan(mw, manga_root: str) -> None:
     thread.progress_range.connect(partial(_on_full_match_progress_range, mw))
     thread.log_message.connect(partial(_on_full_match_log, mw))
     thread.scan_completed.connect(partial(_on_full_match_completed, mw))
-    thread.series_saved.connect(partial(_on_full_match_series_saved, mw))
+    thread.series_saved.connect(partial(_on_full_match_series_saved, mw), Qt.ConnectionType.QueuedConnection)
     thread.series_finished.connect(partial(_on_manhuagui_series_finished, mw))
     thread.error_occurred.connect(partial(on_error_occurred, mw))
 
@@ -252,7 +253,7 @@ def _start_comicvine_scan(mw, manga_root: str) -> None:
     thread.progress_range.connect(partial(_on_full_match_progress_range, mw))
     thread.log_message.connect(partial(_on_full_match_log, mw))
     thread.scan_completed.connect(partial(_on_full_match_completed, mw, mode=0))
-    thread.series_saved.connect(partial(_on_full_match_series_saved, mw))
+    thread.series_saved.connect(partial(_on_full_match_series_saved, mw), Qt.ConnectionType.QueuedConnection)
     thread.series_finished.connect(partial(_on_comicvine_series_finished, mw))
     thread.error_occurred.connect(partial(on_error_occurred, mw))
 
@@ -318,7 +319,7 @@ def _start_manual_match_scan(mw, manga_root: str, manga_value: Optional[str]) ->
     thread.progress_range.connect(partial(_on_full_match_progress_range, mw))
     thread.log_message.connect(partial(_on_full_match_log, mw))
     thread.scan_completed.connect(partial(_on_full_match_completed, mw, mode=3))
-    thread.series_saved.connect(partial(_on_full_match_series_saved, mw))
+    thread.series_saved.connect(partial(_on_full_match_series_saved, mw), Qt.ConnectionType.QueuedConnection)
     thread.series_finished.connect(partial(_on_manual_series_finished, mw))
     thread.error_occurred.connect(partial(on_error_occurred, mw))
 
@@ -461,12 +462,14 @@ def _on_manual_series_finished(mw, processed: int, skipped: int) -> None:
 
 
 def _on_full_match_series_saved(mw, result: Dict) -> None:
-    """全匹配模式逐系列保存信号：结果入库 → 刷新结果表 → 立即静默写盘（主线程槽）
+    """全匹配模式逐系列保存信号：结果入库 → 立即静默写盘（主线程槽，QueuedConnection）
 
     每个系列确认后即时保存，保证扫描中途崩溃/强制停止时已确认结果不丢失。
+    时序设计：确认后立即启动写盘（xml+打包异步），同时 worker 可继续弹下一系列
+    XML 处理窗。结果表刷新延后到写盘完成槽 _on_save_finished 里的
+    update_results_table，避免写盘期间并发读 zip。
     """
     mw.scan_results.append(result)
-    mw.update_results_table()
     mw.save_changes(show_result=False)
 
 
