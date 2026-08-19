@@ -66,83 +66,92 @@ def _check_seven_zip_available() -> str:
     except (subprocess.SubprocessError, FileNotFoundError):
         return ""
 
-def _add_with_zipfile(zip_path: str, file_content: str, file_name: str, xml_exists: bool = False) -> bool:
-    """使用zipfile模块的回退方法
-    
+def _add_with_zipfile(zip_path: str, file_content: str, file_name: str,
+                      xml_exists: bool = False,
+                      files_to_delete: Optional[List[str]] = None) -> bool:
+    """使用 zipfile 流式重写添加/更新 XML（统一 ZIP_STORED 输出）
+
+    逐条目流式复制（读一个条目即写一个条目，不全量载入内存），适合大卷。
+    输出统一 ZIP_STORED（归档不压缩），替代 7z a -si 原地更新：
+    7z -si 更新 DEFLATE 原卷需解压+重压整卷（154-269MB），慢 + 文件占用重试会把
+    原卷替换成只含 XML 的空壳（丢图），故 zip/cbz 原地写统一走本方法。
+
     Args:
-        zip_path: ZIP文件路径
-        file_content: 文件内容
-        file_name: 文件名
-        xml_exists: XML文件是否已存在
+        zip_path: zip/cbz 文件路径
+        file_content: 待写入的 XML 内容
+        file_name: 文件名（默认 ComicInfo.xml）
+        xml_exists: 目标 XML 是否已存在（仅影响成功提示文案）
+        files_to_delete: 需删除的其它 XML 文件名列表（流式复制时跳过）
+
+    Returns:
+        bool: 是否成功
     """
-    import shutil
     import zipfile
-    
+
+    files_to_delete = set(files_to_delete or [])
+
     try:
-        # 明确在本地PC的临时目录创建ZIP临时文件
-        temp_dir = tempfile.gettempdir()  # 获取系统临时目录
-        temp_zip_path = os.path.join(temp_dir, f"temp_{os.path.basename(zip_path)}")
-        
-        # 复制原始zip文件到临时文件
-        # 7z.exe 退出延迟可能短暂占用文件，复制失败时递增等待重试
-        max_copy_retries = 3
-        for attempt in range(1, max_copy_retries + 1):
+        # 在系统临时目录创建唯一临时文件（uuid 避免多实例/同名冲突）
+        temp_dir = tempfile.gettempdir()
+        safe_base = re.sub(r'[<>:"/\\|?*]', '_', os.path.basename(zip_path))
+        temp_zip_path = os.path.join(
+            temp_dir, f"temp_{uuid.uuid4().hex[:8]}_{safe_base}")
+
+        # 源文件可能被其它进程（如并行会话）短暂占用，打开失败时递增等待重试
+        max_open_retries = 3
+        zin = None
+        for attempt in range(1, max_open_retries + 1):
             try:
-                shutil.copy2(zip_path, temp_zip_path)
+                zin = zipfile.ZipFile(zip_path, 'r')
                 break
-            except OSError:
-                if attempt < max_copy_retries:
-                    time.sleep(0.5 * attempt)  # 递增等待，让 7z.exe 释放句柄
+            except (OSError, zipfile.BadZipFile):
+                if attempt < max_open_retries:
+                    time.sleep(0.5 * attempt)
                 else:
-                    raise  # 最后一次失败向上抛，走现有 except 打印「回退方法失败」
-        
-        # 读取原始文件内容
-        with zipfile.ZipFile(temp_zip_path, 'r') as zf:
-            # 读取所有文件（除了要更新的文件）
-            file_contents = {}
-            for name in zf.namelist():
-                if name != file_name:
-                    try:
-                        file_contents[name] = zf.read(name)
-                    except Exception as e:
-                        print(f"⚠️  读取文件失败 [{name}]: {str(e)[:30]}")
-        
-        # 写入所有文件到临时zip
-        with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_STORED, allowZip64=True) as zf:
-            # 写入所有原始文件
-            for name, content in file_contents.items():
-                zf.writestr(name, content)
-            # 写入新文件
-            zf.writestr(file_name, file_content.encode('utf-8'))
-        
-        # CRC校验：验证临时ZIP文件完整性
+                    raise
+
         try:
-            with zipfile.ZipFile(temp_zip_path, 'r') as zf:
-                bad_file = zf.testzip()
-                if bad_file is None:
-                    print("   🔍 CRC校验通过: 临时ZIP文件完整")
-                else:
-                    print(f"   ⚠️  CRC校验失败: 损坏的文件 {bad_file}")
-                    raise Exception(f"临时ZIP文件CRC校验失败: {bad_file}")
-        except Exception as e:
-            print(f"   ⚠️  CRC校验异常: {str(e)}")
-            raise Exception(f"临时ZIP文件CRC校验异常: {str(e)}")
-        
-        # 只有CRC校验通过，才复制回原文件
-        shutil.copy2(temp_zip_path, zip_path)
-        
+            with zipfile.ZipFile(temp_zip_path, 'w',
+                                 zipfile.ZIP_STORED,
+                                 allowZip64=True) as zout:
+                # 逐条目流式复制：跳过目标 XML（由新内容覆盖）与需删除的其它 XML
+                for name in zin.namelist():
+                    if name == file_name or name in files_to_delete:
+                        continue
+                    try:
+                        zout.writestr(name, zin.read(name))  # 读一个写一个，不整卷进内存
+                    except Exception as e:
+                        print(f"⚠️  读取/写入文件失败 [{name}]: {str(e)[:30]}")
+                # 写入新 XML
+                zout.writestr(file_name, file_content.encode('utf-8'))
+        finally:
+            zin.close()
+
+        # CRC校验：验证临时ZIP文件完整性
+        with zipfile.ZipFile(temp_zip_path, 'r') as zf:
+            bad_file = zf.testzip()
+            if bad_file is None:
+                print("   🔍 CRC校验通过: 临时ZIP文件完整")
+            else:
+                print(f"   ⚠️  CRC校验失败: 损坏的文件 {bad_file}")
+                raise Exception(f"临时ZIP文件CRC校验失败: {bad_file}")
+
+        # 原子替换回原路径
+        os.replace(temp_zip_path, zip_path)
+
         if xml_exists:
             print(f"✅ 使用zipfile成功更新文件: {file_name}")
         else:
             print(f"✅ 使用zipfile成功添加文件: {file_name}")
-        
-        # 删除临时文件
-        if os.path.exists(temp_zip_path):
-            os.unlink(temp_zip_path)
-        
         return True
     except Exception as e:
         print(f"🔴 回退方法失败: {str(e)[:50]}")
+        # 失败清理系统临时目录的临时文件
+        if 'temp_zip_path' in locals() and os.path.exists(temp_zip_path):
+            try:
+                os.unlink(temp_zip_path)
+            except Exception:
+                pass
         return False
 
 

@@ -307,6 +307,17 @@ def add_file_to_zip(zip_path: str, file_content: str, file_name: str = 'ComicInf
         # 3. 其它情况（目标文件不存在，或内容不一致）都需要处理
         # 继续执行后续的写入逻辑
         
+        files_to_delete = locals().get('files_to_delete', [])
+
+        # zip/cbz 原地写：统一走 zipfile 流式重写（ZIP_STORED），不再 7z a -si
+        # （7z -si 更新 DEFLATE 原卷需解压+重压整个 154-269MB 大卷，慢 + 文件占用
+        #   重试最终把原卷替换成只含 XML 的空壳丢图，故 zip/cbz 直接走 zipfile）
+        if current_ext in ('.zip', '.cbz'):
+            return _add_with_zipfile(zip_path, file_content, file_name,
+                                     xml_exists=bool(target_exists),
+                                     files_to_delete=files_to_delete)
+
+        # 非 zip 容器（.cb7 等）保留 7z 原地写路径
         # 明确在本地PC的临时目录创建临时文件，减少目标硬盘的读取
         temp_dir = tempfile.gettempdir()  # 获取系统临时目录
         instance_id = str(uuid.uuid4())[:8]  # 生成8位唯一标识符
