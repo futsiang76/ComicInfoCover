@@ -46,9 +46,16 @@ class FileHandler:
             
         Returns:
             Tuple[int, int]: (总文件数, 成功文件数)
+            其中 success_files 只含「写入成功」+「内容一致跳过」，不含写入失败的文件；
+            失败文件数 = total_files - success_files。
+            失败文件本次扫描内不重试（add_file_to_zip 内部对 os.replace 占用类错误
+            已有 3 次递增重试，外层不再叠加），只标记跳过，避免同一文件被反复重写。
         """
         total_files = 0
         success_files = 0
+        # 记录每个文件的写入结果：success（写入成功）/ skipped（内容一致跳过）/
+        # failed（写入失败，本次扫描不再重试），用于失败汇总与明确标记
+        file_results: Dict[str, str] = {}
         
         if skip_files:
             print("⚠️  跳过文件处理")
@@ -61,6 +68,10 @@ class FileHandler:
         comic_info_base["Manga"] = manga_value
         print(f"📖 Manga字段设置为: {comic_info_base['Manga']}")
         
+        # 注：batch_processor 调用链中 folder_recursive_handler.scan_directory 对每个
+        # 文件夹只回调一次 _process_comic_folder → process_comic_files，单次扫描内
+        # 每文件夹只处理一遍，无需额外跨调用去重缓存；用户主动重扫 = 独立意图，
+        # 允许重新写入（但单次扫描内同一文件只写一次）。
         try:
             for file in os.listdir(folder_path):
                 file_path = os.path.join(folder_path, file)
@@ -78,21 +89,37 @@ class FileHandler:
                     comic_info_base, file, folder_info
                 )
                 
-                # 写入XML到ZIP文件
-                result = add_file_to_zip(file_path, xml_content)
+                # 写入XML到ZIP文件：单个文件失败（返回 False 或内部 os.replace
+                # 3 次重试后仍抛异常）只标记本文件 failed，不重试、不中断整个
+                # 文件夹的扫描，避免「写失败→下次又因内容不一致重写」的循环
+                try:
+                    result = add_file_to_zip(file_path, xml_content)
+                except Exception as e:
+                    file_results[file] = 'failed'
+                    print(f"❌ 写入失败: {file}（本次扫描不再重试）: {str(e)[:100]}")
+                    continue
                 
                 if result is True:
+                    file_results[file] = 'success'
                     success_files += 1
                     # 在add_file_to_zip中已经打印了成功信息
                 elif result is False:
-                    print(f"❌ 写入失败: {file}")
+                    file_results[file] = 'failed'
+                    print(f"❌ 写入失败: {file}（本次扫描不再重试）")
                 else:
                     # 跳过的情况（内容一致）
+                    file_results[file] = 'skipped'
                     print(f"⏭️  跳过文件（内容一致）: {file}")
                     success_files += 1  # 跳过也算成功处理
         
         except Exception as e:
             print(f"🔴 处理文件失败: {str(e)[:50]}")
+        
+        # 失败汇总：醒目标记，便于定位（批量扫描时按文件名逐个报错）
+        failed_files = [f for f, r in file_results.items() if r == 'failed']
+        if failed_files:
+            print(f"❌ 写入失败 {len(failed_files)} 个文件（本次扫描已跳过，不再重试）: "
+                  f"{', '.join(failed_files)}")
         
         return total_files, success_files
     
