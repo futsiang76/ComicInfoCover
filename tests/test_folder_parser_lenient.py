@@ -319,12 +319,10 @@ class TestWeekdaySeriesName:
         assert r["complete"] is True
         assert r["vol_type"] == "已完结"
 
-    def test_qi_volume_marker_still_recognized(self):
-        # 回归：「期」卷标（数字在前 X期）仍由 [0-9]+\s*[期] 命中
-        r = _parse("[作者] 作品 (第3期)")
+    def test_qi_no_longer_triggers_volume(self):
+        # 彻底移除「期」作卷标标记：数字+期 不再被 VOL_RE 命中 → 进 tags，vol_info 为 None
+        r = _parse("[作者] 作品 (3期)")
         assert r["series"] == "作品"
-        assert r["vol_info"] == "3期"
-        assert r["total_volumes"] == 3
-        r2 = _parse("[作者] 作品 (3期)")
-        assert r2["vol_info"] == "3期"
-        assert r2["total_volumes"] == 3
+        assert r["vol_info"] is None
+        assert r["total_volumes"] == 0
+        assert "3期" in r["tags"]
