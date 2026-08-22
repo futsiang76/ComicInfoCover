@@ -148,7 +148,7 @@ def generate_smart_title(filename: str, series_name: str, folder_info: Dict) -> 
     is_non_volume = any(keyword in base_name for keyword in non_volume_keywords)
     
     # 规则0: 短篇完结 —— 文件夹解析为短篇（(短篇)/(V01全 短篇)/(短篇全) 等）→ 「系列名.短篇完结」
-    # 与规则1的 (V01全) → 「系列名.单卷完结」对齐；短篇=一篇完，Title/Series 统一带后缀（幂等）
+    # 与规则1的 (V01全) → 「系列名.单卷完结」对齐；短篇=一篇完，Title 带后缀（幂等），Series 保持裸名
     if is_short_story_folder(folder_info):
         if series_name.endswith(".短篇完结"):
             return series_name, is_non_volume
@@ -183,6 +183,23 @@ def generate_smart_title(filename: str, series_name: str, folder_info: Dict) -> 
         if re.search(full_volume_pattern, base_name):
             # 直接使用"系列名.单卷完结"格式
             return f"{series_name}.单卷完结", is_non_volume
+        
+        # 特殊处理：单卷完结 + 括号内补充信息（如 (V01全 缺Part2-3)）→ 同样视为单卷完结
+        # 括号内以「V0*1全 / Vol 0*1全」（数字=1，单卷）开头，其后补充信息（缺卷说明等）不进 Title
+        single_vol_supplement_pattern = r'\(V0*1全[^)]*\)|\(Vol\s*0*1全[^)]*\)'
+        if re.search(single_vol_supplement_pattern, base_name):
+            return f"{series_name}.单卷完结", is_non_volume
+        
+        # 剥离括号内容：括号内补充信息（缺卷说明/标签等）不进 Title
+        # 覆盖两种形态：卷号被括号包住（如 (V03全 缺V2)），或括号在卷号之后（如 Vol 01 (描述)）
+        if after_vol_text:
+            paren_start = base_name.rfind('(', 0, vol_match.start())
+            if paren_start != -1:
+                paren_end = base_name.find(')', vol_match.end())
+                if paren_end != -1:
+                    # 卷号位于括号内（如 (V03全 缺V2)）→ 剔除整个括号内容，只留括号后的文字
+                    after_vol_text = base_name[paren_end + 1:].strip()
+            after_vol_text = re.sub(r'\([^)]*\)', '', after_vol_text).strip()
         
         # 如果Vol后面有非括号的内容，保留它
         if after_vol_text and not re.match(r'^\[.*?\]$', after_vol_text):

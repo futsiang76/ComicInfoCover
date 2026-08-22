@@ -8,6 +8,9 @@
 - (Vol01全 短篇) → 系列名.短篇完结（Vol 变体）
 - (短篇全) → 系列名.短篇完结（无卷号变体）
 - (V01全) → 系列名.单卷完结（回归，不破坏现有规则）
+- (V01全 缺Part2-3) / (V01全 缺V2) → 系列名.单卷完结（括号内补充信息不进 Title）
+- (V03全 缺V2) 多卷带补充 → 括号内容不进 Title（剥离后为 Vol 03）
+- Vol 01 描述文字（括号外描述）→ 保留（回归）
 - 常规卷/单话 → 既有规则不回归
 - 有卷号的多卷系列带短篇集 tag → 不误判为短篇完结
 
@@ -98,3 +101,40 @@ def test_folder_info_missing_keys_safe():
     folder_info = {"series": "X", "complete": True}
     title, _ = generate_smart_title("Vol 01.zip", "X", folder_info)
     assert title == "Vol 01"
+
+
+def test_single_volume_complete_with_supplement():
+    """(V01全 缺Part2-3)：zip 文件名括号内补充信息不进 Title → 系列名.单卷完结"""
+    folder_info = _parse_folder("[诸星大二郎] 天塌下来那天 (V01全 缺Part2-3)")
+    # 文件夹解析侧：缺卷说明照常进 tags（folder_parser_lenient 行为不变）
+    assert "缺Part2-3" in folder_info["tags"]
+    title, _ = generate_smart_title(
+        "[诸星大二郎] 天塌下来那天 (V01全 缺Part2-3).zip", "天塌下来那天", folder_info
+    )
+    assert title == "天塌下来那天.单卷完结"
+    assert "缺Part2-3" not in title
+
+
+def test_single_volume_complete_with_supplement_short():
+    """(V01全 缺V2) → 系列名.单卷完结（缺卷说明不进 Title）"""
+    folder_info = _parse_folder("[作者] X (V01全 缺V2)")
+    title, _ = generate_smart_title("X (V01全 缺V2).zip", "X", folder_info)
+    assert title == "X.单卷完结"
+    assert "缺V2" not in title
+
+
+def test_volume_with_description_unchanged():
+    """Vol 01 描述文字（括号外描述）→ 保留（回归）"""
+    folder_info = _parse_folder("[作者] X (V05)")
+    title, _ = generate_smart_title("Vol 01 描述文字.zip", "X", folder_info)
+    assert title == "Vol 01 描述文字"
+
+
+def test_multi_volume_with_supplement_stripped():
+    """(V03全 缺V2)：多卷带补充 → 不拼补充，括号内容不进 Title → Vol 03"""
+    folder_info = _parse_folder("[作者] X (V03全 缺V2)")
+    assert "缺V2" in folder_info["tags"]  # 文件夹解析侧缺卷照常进 tags
+    title, _ = generate_smart_title("X (V03全 缺V2).zip", "X", folder_info)
+    assert title == "Vol 03"
+    assert "缺V2" not in title
+    assert ")" not in title

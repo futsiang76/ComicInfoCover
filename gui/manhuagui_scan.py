@@ -92,7 +92,7 @@ def _build_from_manhuagui_id(mw, value: str, folder_info: Dict, fetcher,
 
     comic_info_base = template_handler.create_base_template(folder_info)
     comic_info_base.update(detail)
-    # 短篇文件夹：update(detail) 的裸 Series/Title 覆盖了带后缀值，统一补回（幂等）
+    # 短篇文件夹：update(detail) 的裸 Title 覆盖了带后缀值，统一补回 Title（幂等，Series 保持裸名）
     from processors.xml_template_handler import ensure_short_story_suffix
     comic_info_base = ensure_short_story_suffix(comic_info_base, folder_info)
     title = detail.get("Title") or folder_info["series"]
@@ -183,7 +183,7 @@ def _search_and_select_manhuagui(mw, folder_path: str, folder_info: Dict, fetche
         return template_handler.create_local_template(folder_info), None
     comic_info_base = template_handler.create_base_template(folder_info)
     comic_info_base.update(detail)
-    # 短篇文件夹：update(detail) 的裸 Series/Title 覆盖了带后缀值，统一补回（幂等）
+    # 短篇文件夹：update(detail) 的裸 Title 覆盖了带后缀值，统一补回 Title（幂等，Series 保持裸名）
     from processors.xml_template_handler import ensure_short_story_suffix
     comic_info_base = ensure_short_story_suffix(comic_info_base, folder_info)
     title = detail.get("Title") or folder_info["series"]

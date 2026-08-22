@@ -320,12 +320,19 @@ def build_full_comicinfo_dict(result=None, **overrides) -> Dict[str, Any]:
 
 def _apply_result_fields(info: Dict[str, Any], result: Dict[str, Any]) -> None:
     """将扫描结果字典的通用字段映射到 ComicInfo 字典（原地修改）。"""
-    info["Title"] = result.get("series", "")
-    info["Series"] = result.get("series", "")
-    # 短篇完结：短篇文件夹（result 携带 short_story 信号）→ Series 带「.短篇完结」后缀
-    # 与 generate_smart_title 的 Title 规则对齐；幂等：已带后缀不重复追加
-    if result.get("short_story") and not str(info["Series"]).endswith(".短篇完结"):
-        info["Series"] = f"{info['Series']}.短篇完结"
+    series = str(result.get("series", ""))
+    # Series 永远保持裸系列名：清除历史遗留后缀（旧版本曾把后缀写在 Series 上）
+    for legacy in (".短篇完结", ".单卷完结"):
+        if series.endswith(legacy):
+            series = series[: -len(legacy)]
+            break
+    info["Series"] = series
+    info["Title"] = series
+    # 短篇完结：短篇文件夹（result 携带 short_story 信号）→ Title 带「.短篇完结」后缀
+    # （save_thread 的 Title 实际由 generate_smart_title 生成，此处兜底直接 result→XML 路径）
+    # 幂等：已带后缀不重复追加；Series 保持裸名
+    if result.get("short_story") and not series.endswith(".短篇完结"):
+        info["Title"] = f"{series}.短篇完结"
     info["Count"] = str(result.get("count", "")) if result.get("count") else ""
     info["Writer"] = str(result.get("writer", ""))
     info["Penciller"] = str(result.get("penciller", ""))

@@ -464,7 +464,7 @@ def test_scan_detail_branch_by_resource_type(monkeypatch):
 
 
 def test_scan_short_story_restores_suffix(monkeypatch):
-    """短篇文件夹：comicvine detail 裸 Series 覆盖后缀后补回「.短篇完结」（回归 2026-08-23）"""
+    """短篇文件夹：Title 补回「.短篇完结」，Series 保持裸系列名（回归 2026-08-23 反转）"""
     from gui import comicvine_scan
     from parsers.folder_parser_lenient import parse_folder_name_lenient
 
@@ -495,7 +495,7 @@ def test_scan_short_story_restores_suffix(monkeypatch):
     comic_info_base, selected = comicvine_scan._search_and_select_comicvine(
         mw, "C:/fakepath/Parrot", folder_info, fetcher, template_handler)
     assert selected is not None
-    assert comic_info_base["Series"] == "Parrot.短篇完结"
+    assert comic_info_base["Series"] == "Parrot"  # Series 保持裸系列名
     assert comic_info_base["Title"] == "Parrot.短篇完结"
 
 

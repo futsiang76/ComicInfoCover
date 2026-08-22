@@ -203,11 +203,12 @@ class TestSearchAndSelectMhgIdSearch:
 
 
 class TestManhuaguiShortStorySuffix:
-    """短篇文件夹：update(detail) 裸 Series/Title 覆盖后缀后统一补回（回归 2026-08-23）
+    """短篇文件夹：Title 带后缀、Series 保持裸系列名（回归 2026-08-23 反转）
 
     场景：[北条司] Parrot (V01全 短篇) → create_base_template 产出
-    「Parrot.短篇完结」，但 manhuagui detail 的裸 Series/Title 覆盖了它。
-    修复后 ensure_short_story_suffix 在 update(detail) 之后补回（幂等）。
+    Title=「Parrot.短篇完结」/ Series=「Parrot」，但 manhuagui detail 的裸
+    Series/Title 覆盖了它。修复后 ensure_short_story_suffix 在 update(detail)
+    之后只给 Title 补回后缀（幂等），Series 永远保持裸系列名。
     """
 
     @staticmethod
@@ -234,17 +235,17 @@ class TestManhuaguiShortStorySuffix:
         base, selected = manhuagui_scan._build_from_manhuagui_id(
             mw, "12345", folder_info, FakeFetcher(), self._real_template())
 
-        assert base["Series"] == "Parrot.短篇完结"
+        assert base["Series"] == "Parrot"  # Series 保持裸系列名
         assert base["Title"] == "Parrot.短篇完结"
-        # result 信号与 series 字段正确（保存链路 _apply_result_fields 兜底同步生效）
+        # result 信号正确、series 字段保持裸名（保存链路 _apply_result_fields 兜底同步生效）
         from processors.result_builder import create_result_dict
         result = create_result_dict("/fake/Parrot", folder_info, base, selected,
                                     False, "已修改", source="manhuagui")
         assert result["short_story"] is True
-        assert result["series"] == "Parrot.短篇完结"
+        assert result["series"] == "Parrot"
 
     def test_build_from_id_short_story_idempotent(self):
-        """detail 已带后缀 → 不重复追加"""
+        """detail 已带后缀 → 不重复追加（Title 幂等，Series 裸名）"""
         from gui import manhuagui_scan
 
         mw = type("MW", (), {"log_text": _FakeLog()})()
@@ -252,11 +253,11 @@ class TestManhuaguiShortStorySuffix:
 
         class FakeFetcher:
             def get_manga_detail(self, url):
-                return {"Title": "Parrot.短篇完结", "Series": "Parrot.短篇完结"}
+                return {"Title": "Parrot.短篇完结", "Series": "Parrot"}
 
         base, _ = manhuagui_scan._build_from_manhuagui_id(
             mw, "12345", folder_info, FakeFetcher(), self._real_template())
-        assert base["Series"] == "Parrot.短篇完结"
+        assert base["Series"] == "Parrot"
         assert base["Title"] == "Parrot.短篇完结"
 
     def test_build_from_id_non_short_story_unchanged(self):
@@ -305,22 +306,25 @@ class TestManhuaguiShortStorySuffix:
 
         assert captured["results"], "应走搜索结果选择分支而非无结果分支"
         assert selected is not None
-        assert base["Series"] == "Parrot.短篇完结"
+        assert base["Series"] == "Parrot"  # Series 保持裸系列名
         assert base["Title"] == "Parrot.短篇完结"
 
     def test_ensure_short_story_suffix_helper(self):
-        """公共 helper 单测：补后缀 / 幂等 / 非短篇不动 / 无键不动"""
+        """公共 helper 单测：Title 补后缀 / 幂等 / Series 不动 / 非短篇不动 / 无键不动"""
         from processors.xml_template_handler import ensure_short_story_suffix
 
         folder_info = self._folder_info("[北条司] Parrot (V01全 短篇)")
-        # 裸 Series/Title → 补后缀
+        # 裸 Title/Series → 只给 Title 补后缀，Series 保持裸名
         base = ensure_short_story_suffix({"Title": "Parrot", "Series": "Parrot"}, folder_info)
-        assert base == {"Title": "Parrot.短篇完结", "Series": "Parrot.短篇完结"}
-        # 幂等：已带后缀不重复追加
+        assert base == {"Title": "Parrot.短篇完结", "Series": "Parrot"}
+        # 幂等：Title 已带后缀不重复追加，Series 不动
         base = ensure_short_story_suffix(
-            {"Title": "Parrot.短篇完结", "Series": "Parrot.短篇完结"}, folder_info)
-        assert base["Series"] == "Parrot.短篇完结"
+            {"Title": "Parrot.短篇完结", "Series": "Parrot"}, folder_info)
+        assert base["Series"] == "Parrot"
         assert base["Title"] == "Parrot.短篇完结"
+        # 只有 Series 无 Title → Series 不动（后缀只挂 Title）
+        base = ensure_short_story_suffix({"Series": "Parrot"}, folder_info)
+        assert base == {"Series": "Parrot"}
         # 非短篇文件夹 → 原样
         normal = self._folder_info("[北条司] 城市猎人 (V35全)")
         base = ensure_short_story_suffix({"Title": "城市猎人", "Series": "城市猎人"}, normal)

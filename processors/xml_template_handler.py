@@ -11,6 +11,13 @@ from config import COMICINFO_TEMPLATE, SHORT_STORY_TEMPLATE
 from parsers.file_parser import is_short_story_folder
 
 
+def _with_suffix(value: str, suffix: str) -> str:
+    """幂等追加后缀：value 已带 suffix 时不重复追加（suffix 为空则原样返回）。"""
+    if value and suffix and not str(value).endswith(suffix):
+        return f"{value}{suffix}"
+    return value
+
+
 class XMLTemplateHandler:
     """XML模板处理器类"""
     
@@ -36,13 +43,13 @@ class XMLTemplateHandler:
         else:
             template = COMICINFO_TEMPLATE.copy()
         
-        # 短篇完结：短篇的 Title/Series 统一带「.短篇完结」后缀（与 generate_smart_title 对齐）
-        series_display = f"{folder_info['series']}.短篇完结" if is_short_story else folder_info["series"]
+        # 短篇完结：短篇的 Title 带「.短篇完结」后缀（幂等），Series 保持裸系列名
+        title_display = _with_suffix(folder_info["series"], ".短篇完结") if is_short_story else folder_info["series"]
         
         # 填充基础信息（短篇保留 SHORT_STORY_TEMPLATE 的 Tags）
         template.update({
-            "Title": series_display,
-            "Series": series_display,
+            "Title": title_display,
+            "Series": folder_info["series"],
             "Writer": folder_info["author"],
             "Penciller": folder_info["author"],  # Writer/Penciller 单向补齐
             "Summary": "",
@@ -80,14 +87,14 @@ class XMLTemplateHandler:
         """
         template = self.create_base_template(folder_info)
         
-        # 短篇完结：短篇的 Title/Series 带后缀（覆盖 create_base_template 的结果，保持对齐）
+        # 短篇完结：短篇的 Title 带后缀（覆盖 create_base_template 的结果），Series 保持裸系列名
         short_story_suffix = ".短篇完结" if is_short_story_folder(folder_info) else ""
         
         # 填充Bangumi数据
         bangumi_series = bangumi_data.get("name_cn") or bangumi_data.get("name") or folder_info["series"]
         template.update({
-            "Title": f"{bangumi_series}{short_story_suffix}",
-            "Series": f"{bangumi_series}{short_story_suffix}",
+            "Title": _with_suffix(bangumi_series, short_story_suffix),
+            "Series": bangumi_series,
             "Summary": bangumi_data.get("summary", ""),
             "Web": f"https://bgm.tv/subject/{bangumi_data['id']}" if bangumi_data.get("id") else ""
         })
@@ -171,11 +178,11 @@ class XMLTemplateHandler:
         all_authors = ", ".join(authors)
         
         # 使用文件夹信息填充（Tags 沿用 create_base_template 的结果，短篇保留"短篇"）
-        # 短篇完结：短篇的 Title/Series 带后缀（覆盖 create_base_template 的结果，保持对齐）
+        # 短篇完结：短篇的 Title 带后缀（覆盖 create_base_template 的结果），Series 保持裸系列名
         short_story_suffix = ".短篇完结" if is_short_story_folder(folder_info) else ""
         template.update({
-            "Title": f"{folder_info['series']}{short_story_suffix}",
-            "Series": f"{folder_info['series']}{short_story_suffix}",
+            "Title": _with_suffix(folder_info["series"], short_story_suffix),
+            "Series": folder_info["series"],
             "Writer": all_authors,  # Writer字段包含所有作者
             "Penciller": all_authors,  # Penciller字段也包含所有作者
             "Summary": "",
@@ -316,12 +323,13 @@ class XMLTemplateHandler:
 
 def ensure_short_story_suffix(comic_info_base: Dict[str, Any],
                               folder_info: Dict[str, Any]) -> Dict[str, Any]:
-    """短篇文件夹：确保 Title/Series 带「.短篇完结」后缀（幂等，已带不重复）。
+    """短篇文件夹：确保 Title 带「.短篇完结」后缀（幂等，已带不重复），Series 保持裸系列名。
 
     manhuagui/comicvine 路径 create_base_template 后直接 update(detail)，
-    detail 的裸 Series/Title 会覆盖 create_base_template 产出的带后缀值
+    detail 的裸 Series/Title 会覆盖 create_base_template 产出的带后缀 Title
     （create_bangumi_template 自带后缀逻辑，不走此函数）。此函数应在
-    update(detail) 之后调用，把后缀统一补回。非短篇文件夹不做任何修改。
+    update(detail) 之后调用，把 Title 后缀统一补回。Series 不参与后缀，
+    永远保持裸系列名（以 detail/folder 提供的裸名为准）。非短篇文件夹不做任何修改。
 
     Args:
         comic_info_base: ComicInfo 字典（原地修改）
@@ -331,10 +339,9 @@ def ensure_short_story_suffix(comic_info_base: Dict[str, Any],
         传入的 comic_info_base（原地修改并返回，便于链式调用）
     """
     if comic_info_base and is_short_story_folder(folder_info):
-        for key in ("Title", "Series"):
-            value = comic_info_base.get(key)
-            if value and not str(value).endswith(".短篇完结"):
-                comic_info_base[key] = f"{value}.短篇完结"
+        value = comic_info_base.get("Title")
+        if value and not str(value).endswith(".短篇完结"):
+            comic_info_base["Title"] = f"{value}.短篇完结"
     return comic_info_base
 
 
