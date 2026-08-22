@@ -277,16 +277,19 @@ class XMLTemplateHandler:
         Returns:
             Dict[str, str]: 年份和月份字典
         """
+        # 惰性导入：xml_generator 模块级 import 本模块，此处不能再反向模块级 import
+        from processors.xml_generator import clean_month, clean_year
+
         year_month = {"Year": "", "Month": ""}
-        
+
         if date_str:
-            # 尝试解析日期格式：YYYY-MM-DD
+            # 尝试解析日期格式：YYYY-MM-DD（Year/Month 再经清洗，防「年」等非数字字符）
             parts = date_str.split("-")
             if len(parts) >= 1:
-                year_month["Year"] = parts[0]
+                year_month["Year"] = clean_year(parts[0])
             if len(parts) >= 2:
-                year_month["Month"] = parts[1]
-        
+                year_month["Month"] = clean_month(parts[1])
+
         return year_month
     
     def _append_author(self, current_authors: str, new_author: str) -> str:

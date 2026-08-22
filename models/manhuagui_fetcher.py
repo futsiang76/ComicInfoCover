@@ -225,7 +225,9 @@ class ManhuaguiFetcher:
                 elif "剧情" in label or "题材" in label:
                     genre = ", ".join(values)
                 elif "年代" in label:
-                    year = values[0]
+                    # 页面年代形如「1999年」，源头先清成纯数字（出口 _apply_result_fields 还会兜底）
+                    from processors.xml_generator import clean_year
+                    year = clean_year(values[0])
                 elif "别名" in label:
                     aliases.extend(values)
 

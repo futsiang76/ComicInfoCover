@@ -4,9 +4,44 @@
 XML生成器模块 - 负责生成ComicInfo.xml内容
 """
 
+import re
 from typing import Any, Dict, Optional
 
 from processors.xml_template_handler import XMLTemplateHandler
+
+
+def clean_year(year_value: Any) -> str:
+    """清洗 ComicInfo 的 Year 字段：只保留 4 位数字年份（如 1999），否则返回空字符串。
+
+    Komga 读取 ComicInfo.xml 时 Year 是数字类型，带「年」等非数字字符会导致整份
+    XML 反序列化失败（Jackson 报 ComicInfo["Year"]），Title/Summary/作者/Tags 全部丢失。
+    manhuagui 源抓到的年代形如「1999年」，必须在此清成纯数字：优先匹配 4 位年份
+    （正则 \\d{4}），退而求其次取连续数字段；提取不到返回空字符串（不硬塞 0000）。
+    """
+    if year_value is None:
+        return ""
+    text = str(year_value).strip()
+    if not text:
+        return ""
+    match = re.search(r"\d{4}", text)
+    if match:
+        return match.group(0)
+    match = re.search(r"\d+", text)
+    return match.group(0) if match else ""
+
+
+def clean_month(month_value: Any) -> str:
+    """清洗 ComicInfo 的 Month 字段：只保留 1-2 位数字月份（如 1 或 01），否则返回空字符串。
+
+    与 clean_year 同理：Month 在 Komga 中同为数字类型，带非数字字符会导致解析失败。
+    """
+    if month_value is None:
+        return ""
+    text = str(month_value).strip()
+    if not text:
+        return ""
+    match = re.search(r"\d+", text)
+    return match.group(0) if match else ""
 
 
 class XMLGenerator:
@@ -240,12 +275,12 @@ def build_file_comicinfo(result: Optional[Dict], filename: str, *,
             filename, result.get("series", ""), folder_info)[0]
     # Volume/Number：detail 或文件名解析
     apply_volume_number(file_comic_info, filename, detail)
-    # 锁住的文件：detail 覆盖 year/month/summary
+    # 锁住的文件：detail 覆盖 year/month/summary（Year/Month 经清洗，防非数字字符）
     if is_locked:
         if detail.get("year"):
-            file_comic_info["Year"] = detail["year"]
+            file_comic_info["Year"] = clean_year(detail["year"])
         if detail.get("month"):
-            file_comic_info["Month"] = detail["month"]
+            file_comic_info["Month"] = clean_month(detail["month"])
         if detail.get("summary"):
             file_comic_info["Summary"] = detail["summary"]
     # Notes 锁定标记
@@ -290,8 +325,8 @@ def _apply_result_fields(info: Dict[str, Any], result: Dict[str, Any]) -> None:
     info["Writer"] = str(result.get("writer", ""))
     info["Penciller"] = str(result.get("penciller", ""))
     info["Colorist"] = str(result.get("colorist", ""))
-    info["Year"] = str(result.get("year", "")) if result.get("year") else ""
-    info["Month"] = str(result.get("month", "")) if result.get("month") else ""
+    info["Year"] = clean_year(result.get("year", ""))
+    info["Month"] = clean_month(result.get("month", ""))
     info["Status"] = str(result.get("status", ""))
     info["Summary"] = str(result.get("summary", ""))
     info["Tags"] = str(result.get("tags", ""))
