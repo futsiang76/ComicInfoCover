@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from processors.xml_generator import XMLGenerator
 from .cover_utils import get_zip_cover_info
 from .utils import check_all_files_have_xml
+from parsers.file_parser import is_short_story_folder
 
 
 def _collect_covers(folder_path: str, comic_files: List) -> Dict:
@@ -131,6 +132,7 @@ def create_result_dict(folder_path: str, folder_info: Dict,
         "folder_path": folder_path,
         "folder_name": os.path.basename(folder_path),
         "series": comic_info_base.get("Series", "") if comic_info_base else folder_info.get("series", ""),
+        "short_story": is_short_story_folder(folder_info),
         "file_titles": file_titles,
         "file_details": file_details,
         "covers": covers,
@@ -264,6 +266,7 @@ def create_result_dict_from_xml(folder_path: str, folder_info: Dict,
         "folder_path": folder_path,
         "folder_name": os.path.basename(folder_path),
         "series": comic_info_base.get("Series", "") if comic_info_base else folder_info.get("series", ""),
+        "short_story": is_short_story_folder(folder_info),
         "file_titles": file_titles,
         "file_details": file_details,
         "covers": covers,

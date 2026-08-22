@@ -102,6 +102,31 @@ def parse_volume_from_filename(filename: str) -> Dict[str, str]:
         "number": ""
     }
 
+def is_short_story_folder(folder_info: Dict) -> bool:
+    """判断文件夹是否为短篇（短篇完结）。
+
+    folder_info 来自 parse_folder_name_lenient（vol_type/vol_info/tags 字段），
+    或 result 字典（tags 为逗号分隔字符串，short_story 布尔标记）。
+    判定：
+    - vol_type/vol_info 为「短篇」→ 短篇
+    - tags 含精确「短篇」→ 短篇（覆盖 (V01全 短篇) 等卷分支短篇进 tags 的情况）
+    - 无卷号时 tags 以「短篇」开头（短篇全/短篇集/短篇+xxx）→ 短篇变体
+    - 有卷号的多卷系列（如 V10全 短篇集）不误判
+    """
+    if folder_info.get("vol_type") == "短篇" or folder_info.get("vol_info") == "短篇":
+        return True
+    if folder_info.get("short_story"):
+        return True
+    tags = folder_info.get("tags") or []
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",")]
+    tags = [str(t) for t in tags if str(t).strip()]
+    if "短篇" in tags:
+        return True
+    vol_info = folder_info.get("vol_info") or ""
+    return not vol_info and any(t.startswith("短篇") for t in tags)
+
+
 def generate_smart_title(filename: str, series_name: str, folder_info: Dict) -> tuple[str, bool]:
     """根据文件名智能生成Title
     
@@ -109,7 +134,7 @@ def generate_smart_title(filename: str, series_name: str, folder_info: Dict) -> 
     1. Vol 01.zip, V01.zip, 第1卷.zip → "Vol 01"
     2. Vol 01 + 描述文字.zip → "Vol 01 描述文字"
     3. C01.zip, 第01话.zip → "C 01"
-    4. 短篇.zip → 使用系列名
+    4. 短篇文件夹（(短篇)/(V01全 短篇)/(短篇全)）→ "系列名.短篇完结"
     5. 番外、设定集、其它不是单行本Vol或卷的，引用文件名。
     
     返回值：
@@ -122,7 +147,14 @@ def generate_smart_title(filename: str, series_name: str, folder_info: Dict) -> 
     non_volume_keywords = ['画集', '设定集', '设定', '番外', '外传', '外伝', '特典', '附录', '资料集', '画集', '插画集', '原画集']
     is_non_volume = any(keyword in base_name for keyword in non_volume_keywords)
     
-# 规则1: 单行本格式 - Vol 01, V01, 第1卷等
+    # 规则0: 短篇完结 —— 文件夹解析为短篇（(短篇)/(V01全 短篇)/(短篇全) 等）→ 「系列名.短篇完结」
+    # 与规则1的 (V01全) → 「系列名.单卷完结」对齐；短篇=一篇完，Title/Series 统一带后缀（幂等）
+    if is_short_story_folder(folder_info):
+        if series_name.endswith(".短篇完结"):
+            return series_name, is_non_volume
+        return f"{series_name}.短篇完结", is_non_volume
+    
+    # 规则1: 单行本格式 - Vol 01, V01, 第1卷等
     vol_match = re.search(r'(Vol\.?\s*\d+|V\d+|第\s*\d+\s*卷)', base_name, re.IGNORECASE)
     if vol_match:
         vol_text = vol_match.group(1)
@@ -185,17 +217,13 @@ def generate_smart_title(filename: str, series_name: str, folder_info: Dict) -> 
         
         return chapter_text, is_non_volume
     
-    # 规则3: 短篇
-    if folder_info["vol_type"] == "短篇":
-        return series_name, is_non_volume
-    
-    # 规则4: 番外、设定集等额外内容
+    # 规则3: 番外、设定集等额外内容
     extra_keywords = ['番外', '设定集', '设定', '外传', '外伝', '特典', '附录', '资料集', '画集', '插画集', '原画集']
     for keyword in extra_keywords:
         if keyword in base_name:
             return base_name, True  # 明确标记为非单行本
     
-    # 规则5: 其他情况 - 使用文件名
+    # 规则4: 其他情况 - 使用文件名
     # 如果文件名包含作者信息，移除作者信息部分
     clean_name = re.sub(r'^\[.*?\]\s*', '', base_name).strip()
     if clean_name:

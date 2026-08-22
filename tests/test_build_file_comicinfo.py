@@ -175,3 +175,43 @@ def test_create_result_dict_from_xml_file_titles_fallback_smart(tmp_path):
         str(tmp_path), folder_info,
         _build_xml_result({"Series": "Smoke", "Status": "Completed"}))
     assert result["file_titles"]["Vol 02.cbz"] == "Vol 02"
+
+
+# ---------- 短篇完结（Title/Series 同步后缀，2026-08-23） ----------
+
+def test_short_story_title_and_series_suffixed():
+    """短篇文件夹（short_story=True）→ Title/Series 都是「系列名.短篇完结」"""
+    result = {"series": "化身者", "short_story": True, "status": "Completed", "tags": "短篇"}
+    info = build_file_comicinfo(result, "化身者 (短篇).zip")
+    assert info["Title"] == "化身者.短篇完结"
+    assert info["Series"] == "化身者.短篇完结"
+
+
+def test_short_story_series_suffix_idempotent():
+    """series 已带后缀（create_base_template 已产出）→ Series 不重复追加，Title 一致"""
+    result = {"series": "化身者.短篇完结", "short_story": True}
+    info = build_file_comicinfo(result, "Vol 01.zip")
+    assert info["Series"] == "化身者.短篇完结"
+    assert info["Title"] == "化身者.短篇完结"
+
+
+def test_non_short_story_series_unchanged():
+    """非短篇文件夹 → Series 不带后缀（回归）"""
+    result = {"series": "某系列", "short_story": False, "status": "Completed"}
+    info = build_file_comicinfo(result, "Vol 01.zip")
+    assert info["Series"] == "某系列"
+    assert info["Title"] == "Vol 01"
+
+
+def test_short_story_scan_result_flow(tmp_path):
+    """端到端：真实解析 (短篇) 文件夹 → create_result_dict → build_file_comicinfo"""
+    from parsers.folder_parser_lenient import parse_folder_name_lenient
+    from processors.result_builder import create_result_dict
+
+    folder_info = parse_folder_name_lenient("[比良贺みん也] 化身者 (短篇)")
+    assert folder_info is not None
+    result = create_result_dict(str(tmp_path), folder_info, None, None, False, "已处理")
+    assert result["short_story"] is True
+    info = build_file_comicinfo(result, "化身者 (短篇).zip", file_titles=result["file_titles"])
+    assert info["Title"] == "化身者.短篇完结"
+    assert info["Series"] == "化身者.短篇完结"

@@ -8,6 +8,7 @@ import re
 from typing import Any, Dict
 
 from config import COMICINFO_TEMPLATE, SHORT_STORY_TEMPLATE
+from parsers.file_parser import is_short_story_folder
 
 
 class XMLTemplateHandler:
@@ -28,21 +29,20 @@ class XMLTemplateHandler:
             Dict[str, Any]: ComicInfo基础数据字典
         """
         # 根据 folder_info 自动判定短篇（宽松解析会写入 vol_type/vol_info/tags）
-        is_short_story = is_short_story or (
-            folder_info.get("vol_type") == "短篇"
-            or folder_info.get("vol_info") == "短篇"
-            or "短篇" in (folder_info.get("tags") or [])
-        )
+        is_short_story = is_short_story or is_short_story_folder(folder_info)
 
         if is_short_story:
             template = SHORT_STORY_TEMPLATE.copy()
         else:
             template = COMICINFO_TEMPLATE.copy()
         
+        # 短篇完结：短篇的 Title/Series 统一带「.短篇完结」后缀（与 generate_smart_title 对齐）
+        series_display = f"{folder_info['series']}.短篇完结" if is_short_story else folder_info["series"]
+        
         # 填充基础信息（短篇保留 SHORT_STORY_TEMPLATE 的 Tags）
         template.update({
-            "Title": folder_info["series"],
-            "Series": folder_info["series"],
+            "Title": series_display,
+            "Series": series_display,
             "Writer": folder_info["author"],
             "Penciller": folder_info["author"],  # Writer/Penciller 单向补齐
             "Summary": "",
@@ -80,10 +80,14 @@ class XMLTemplateHandler:
         """
         template = self.create_base_template(folder_info)
         
+        # 短篇完结：短篇的 Title/Series 带后缀（覆盖 create_base_template 的结果，保持对齐）
+        short_story_suffix = ".短篇完结" if is_short_story_folder(folder_info) else ""
+        
         # 填充Bangumi数据
+        bangumi_series = bangumi_data.get("name_cn") or bangumi_data.get("name") or folder_info["series"]
         template.update({
-            "Title": bangumi_data.get("name_cn") or bangumi_data.get("name") or folder_info["series"],
-            "Series": bangumi_data.get("name_cn") or bangumi_data.get("name") or folder_info["series"],
+            "Title": f"{bangumi_series}{short_story_suffix}",
+            "Series": f"{bangumi_series}{short_story_suffix}",
             "Summary": bangumi_data.get("summary", ""),
             "Web": f"https://bgm.tv/subject/{bangumi_data['id']}" if bangumi_data.get("id") else ""
         })
@@ -167,9 +171,11 @@ class XMLTemplateHandler:
         all_authors = ", ".join(authors)
         
         # 使用文件夹信息填充（Tags 沿用 create_base_template 的结果，短篇保留"短篇"）
+        # 短篇完结：短篇的 Title/Series 带后缀（覆盖 create_base_template 的结果，保持对齐）
+        short_story_suffix = ".短篇完结" if is_short_story_folder(folder_info) else ""
         template.update({
-            "Title": folder_info["series"],
-            "Series": folder_info["series"],
+            "Title": f"{folder_info['series']}{short_story_suffix}",
+            "Series": f"{folder_info['series']}{short_story_suffix}",
             "Writer": all_authors,  # Writer字段包含所有作者
             "Penciller": all_authors,  # Penciller字段也包含所有作者
             "Summary": "",
@@ -306,6 +312,30 @@ class XMLTemplateHandler:
             return new_author
         else:
             return f"{current_authors}, {new_author}"
+
+
+def ensure_short_story_suffix(comic_info_base: Dict[str, Any],
+                              folder_info: Dict[str, Any]) -> Dict[str, Any]:
+    """短篇文件夹：确保 Title/Series 带「.短篇完结」后缀（幂等，已带不重复）。
+
+    manhuagui/comicvine 路径 create_base_template 后直接 update(detail)，
+    detail 的裸 Series/Title 会覆盖 create_base_template 产出的带后缀值
+    （create_bangumi_template 自带后缀逻辑，不走此函数）。此函数应在
+    update(detail) 之后调用，把后缀统一补回。非短篇文件夹不做任何修改。
+
+    Args:
+        comic_info_base: ComicInfo 字典（原地修改）
+        folder_info: 文件夹解析信息（is_short_story_folder 判定）
+
+    Returns:
+        传入的 comic_info_base（原地修改并返回，便于链式调用）
+    """
+    if comic_info_base and is_short_story_folder(folder_info):
+        for key in ("Title", "Series"):
+            value = comic_info_base.get(key)
+            if value and not str(value).endswith(".短篇完结"):
+                comic_info_base[key] = f"{value}.短篇完结"
+    return comic_info_base
 
 
 def create_xml_template_handler() -> XMLTemplateHandler:

@@ -270,7 +270,8 @@ def build_file_comicinfo(result: Optional[Dict], filename: str, *,
     else:
         from parsers.file_parser import generate_smart_title
         folder_info = {"series": result.get("series", ""),
-                       "complete": result.get("status") == "Completed"}
+                       "complete": result.get("status") == "Completed",
+                       "short_story": result.get("short_story", False)}
         file_comic_info["Title"] = generate_smart_title(
             filename, result.get("series", ""), folder_info)[0]
     # Volume/Number：detail 或文件名解析
@@ -321,6 +322,10 @@ def _apply_result_fields(info: Dict[str, Any], result: Dict[str, Any]) -> None:
     """将扫描结果字典的通用字段映射到 ComicInfo 字典（原地修改）。"""
     info["Title"] = result.get("series", "")
     info["Series"] = result.get("series", "")
+    # 短篇完结：短篇文件夹（result 携带 short_story 信号）→ Series 带「.短篇完结」后缀
+    # 与 generate_smart_title 的 Title 规则对齐；幂等：已带后缀不重复追加
+    if result.get("short_story") and not str(info["Series"]).endswith(".短篇完结"):
+        info["Series"] = f"{info['Series']}.短篇完结"
     info["Count"] = str(result.get("count", "")) if result.get("count") else ""
     info["Writer"] = str(result.get("writer", ""))
     info["Penciller"] = str(result.get("penciller", ""))
