@@ -463,6 +463,42 @@ def test_scan_detail_branch_by_resource_type(monkeypatch):
     assert "volume" in mw.log_text.lines[-1]
 
 
+def test_scan_short_story_restores_suffix(monkeypatch):
+    """短篇文件夹：comicvine detail 裸 Series 覆盖后缀后补回「.短篇完结」（回归 2026-08-23）"""
+    from gui import comicvine_scan
+    from parsers.folder_parser_lenient import parse_folder_name_lenient
+
+    mw = type("FakeMW", (), {"log_text": FakeLog()})()
+    folder_info = parse_folder_name_lenient("[北条司] Parrot (V01全 短篇)")
+    assert folder_info is not None
+
+    class FakeParrotFetcher:
+        """详情返回裸 Series（模拟 ComicVine volume/series 详情映射，无后缀）"""
+
+        def get_series_detail(self, sid):
+            return {"Title": "Parrot", "Series": "Parrot", "Year": "1985"}
+
+        def get_volume_detail(self, vid):
+            return {"Title": "Parrot", "Series": "Parrot", "Count": "1"}
+
+    fetcher = FakeParrotFetcher()
+    template_handler = FakeTemplateHandler()
+
+    monkeypatch.setattr(
+        "processors.search_handler.search_manga",
+        lambda keyword, folder_info=None, source="bangumi": [{"id": 31, "name": "Parrot"}],
+    )
+    monkeypatch.setattr(
+        "gui.comicvine_scan.show_result_selection_dialog",
+        lambda *a, **k: {"id": 31, "name": "Parrot", "resource_type": "series"},
+    )
+    comic_info_base, selected = comicvine_scan._search_and_select_comicvine(
+        mw, "C:/fakepath/Parrot", folder_info, fetcher, template_handler)
+    assert selected is not None
+    assert comic_info_base["Series"] == "Parrot.短篇完结"
+    assert comic_info_base["Title"] == "Parrot.短篇完结"
+
+
 def test_create_result_dict_comicvine_web(tmp_path):
     """comicvine 结果的 web 字段直接取 site_detail_url（source_url 机制）"""
     from processors.result_builder import create_result_dict

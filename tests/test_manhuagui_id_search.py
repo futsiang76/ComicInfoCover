@@ -200,3 +200,131 @@ class TestSearchAndSelectMhgIdSearch:
         assert captured["id_search_kind"] == "manhuagui"
         assert base["Title"] == "原子小金剛 地上最大機器人篇"
         assert selected["url"] == "https://www.manhuagui.com/comic/20635/"
+
+
+class TestManhuaguiShortStorySuffix:
+    """短篇文件夹：update(detail) 裸 Series/Title 覆盖后缀后统一补回（回归 2026-08-23）
+
+    场景：[北条司] Parrot (V01全 短篇) → create_base_template 产出
+    「Parrot.短篇完结」，但 manhuagui detail 的裸 Series/Title 覆盖了它。
+    修复后 ensure_short_story_suffix 在 update(detail) 之后补回（幂等）。
+    """
+
+    @staticmethod
+    def _folder_info(name):
+        from parsers.folder_parser_lenient import parse_folder_name_lenient
+        return parse_folder_name_lenient(name)
+
+    @staticmethod
+    def _real_template():
+        from processors.xml_template_handler import create_xml_template_handler
+        return create_xml_template_handler()
+
+    def test_build_from_id_short_story_restores_suffix(self):
+        from gui import manhuagui_scan
+
+        mw = type("MW", (), {"log_text": _FakeLog()})()
+        folder_info = self._folder_info("[北条司] Parrot (V01全 短篇)")
+        assert folder_info is not None
+
+        class FakeFetcher:
+            def get_manga_detail(self, url):  # manhuagui 详情：裸标题无后缀
+                return {"Title": "Parrot", "Series": "Parrot", "Writer": "北条司"}
+
+        base, selected = manhuagui_scan._build_from_manhuagui_id(
+            mw, "12345", folder_info, FakeFetcher(), self._real_template())
+
+        assert base["Series"] == "Parrot.短篇完结"
+        assert base["Title"] == "Parrot.短篇完结"
+        # result 信号与 series 字段正确（保存链路 _apply_result_fields 兜底同步生效）
+        from processors.result_builder import create_result_dict
+        result = create_result_dict("/fake/Parrot", folder_info, base, selected,
+                                    False, "已修改", source="manhuagui")
+        assert result["short_story"] is True
+        assert result["series"] == "Parrot.短篇完结"
+
+    def test_build_from_id_short_story_idempotent(self):
+        """detail 已带后缀 → 不重复追加"""
+        from gui import manhuagui_scan
+
+        mw = type("MW", (), {"log_text": _FakeLog()})()
+        folder_info = self._folder_info("[北条司] Parrot (V01全 短篇)")
+
+        class FakeFetcher:
+            def get_manga_detail(self, url):
+                return {"Title": "Parrot.短篇完结", "Series": "Parrot.短篇完结"}
+
+        base, _ = manhuagui_scan._build_from_manhuagui_id(
+            mw, "12345", folder_info, FakeFetcher(), self._real_template())
+        assert base["Series"] == "Parrot.短篇完结"
+        assert base["Title"] == "Parrot.短篇完结"
+
+    def test_build_from_id_non_short_story_unchanged(self):
+        """普通已完结卷 [北条司] 城市猎人 (V35全) → Series 不带后缀（回归）"""
+        from gui import manhuagui_scan
+
+        mw = type("MW", (), {"log_text": _FakeLog()})()
+        folder_info = self._folder_info("[北条司] 城市猎人 (V35全)")
+        assert folder_info is not None
+
+        class FakeFetcher:
+            def get_manga_detail(self, url):
+                return {"Title": "城市猎人", "Series": "城市猎人"}
+
+        base, _ = manhuagui_scan._build_from_manhuagui_id(
+            mw, "99999", folder_info, FakeFetcher(), self._real_template())
+        assert base["Series"] == "城市猎人"
+        assert base["Title"] == "城市猎人"
+
+    def test_search_and_select_short_story_restores_suffix(self, monkeypatch):
+        """搜索 → 选择 → 详情路径同样补回后缀"""
+        from gui import manhuagui_scan
+        from processors import search_handler
+
+        monkeypatch.setattr(
+            search_handler, "search_manga",
+            lambda keyword, folder_info=None, source="manhuagui": [{
+                "id": 12345, "url": "https://www.manhuagui.com/comic/12345/",
+                "title": "Parrot", "author": "北条司"}])
+        captured = {}
+
+        def fake_select(parent, results, folder_info, allow_id_search=False):
+            captured["results"] = results
+            return {"id": 12345, "url": "https://www.manhuagui.com/comic/12345/"}
+
+        monkeypatch.setattr(manhuagui_scan, "show_result_selection_dialog", fake_select)
+
+        class FakeFetcher:
+            def get_manga_detail(self, url):
+                return {"Title": "Parrot", "Series": "Parrot", "Writer": "北条司"}
+
+        mw = type("MW", (), {"log_text": _FakeLog()})()
+        folder_info = self._folder_info("[北条司] Parrot (V01全 短篇)")
+        base, selected = manhuagui_scan._search_and_select_manhuagui(
+            mw, "/fake/Parrot", folder_info, FakeFetcher(), self._real_template())
+
+        assert captured["results"], "应走搜索结果选择分支而非无结果分支"
+        assert selected is not None
+        assert base["Series"] == "Parrot.短篇完结"
+        assert base["Title"] == "Parrot.短篇完结"
+
+    def test_ensure_short_story_suffix_helper(self):
+        """公共 helper 单测：补后缀 / 幂等 / 非短篇不动 / 无键不动"""
+        from processors.xml_template_handler import ensure_short_story_suffix
+
+        folder_info = self._folder_info("[北条司] Parrot (V01全 短篇)")
+        # 裸 Series/Title → 补后缀
+        base = ensure_short_story_suffix({"Title": "Parrot", "Series": "Parrot"}, folder_info)
+        assert base == {"Title": "Parrot.短篇完结", "Series": "Parrot.短篇完结"}
+        # 幂等：已带后缀不重复追加
+        base = ensure_short_story_suffix(
+            {"Title": "Parrot.短篇完结", "Series": "Parrot.短篇完结"}, folder_info)
+        assert base["Series"] == "Parrot.短篇完结"
+        assert base["Title"] == "Parrot.短篇完结"
+        # 非短篇文件夹 → 原样
+        normal = self._folder_info("[北条司] 城市猎人 (V35全)")
+        base = ensure_short_story_suffix({"Title": "城市猎人", "Series": "城市猎人"}, normal)
+        assert base == {"Title": "城市猎人", "Series": "城市猎人"}
+        # 空字典 / 无 Series/Title 键 → 原样返回
+        assert ensure_short_story_suffix({}, folder_info) == {}
+        assert ensure_short_story_suffix({"Summary": "x"}, folder_info) == {"Summary": "x"}
